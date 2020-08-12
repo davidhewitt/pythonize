@@ -12,5 +12,26 @@ that which is produced directly by `pythonize`.
 Pythonize has two public APIs: `pythonize` and `depythonize`.
 
 ```
-// TODO Example
+use serde::{Serialize, Deserialize};
+use pyo3::{Python, py_run};
+use pythonize::pythonize;
+
+#[derive(Serialize, Deserialize)]
+struct Sample {
+    foo: String,
+    bar: Option<usize>
+}
+
+Python::with_gil(|py| -> PyResult<()> {
+    let sample = Sample {
+        foo: "foo".to_string(),
+        bar: None
+    };
+
+    let obj = pythonize(py, &sample)?;
+
+    println!("{}", obj.as_ref(py).repr());
+})
+
+// XXX: depythonize is not yet implemented!
 ```
