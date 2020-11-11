@@ -2,7 +2,7 @@
 ///
 /// ```
 /// use serde::{Serialize, Deserialize};
-/// use pyo3::{Python, AsPyRef};
+/// use pyo3::Python;
 /// use pythonize::pythonize;
 ///
 /// #[derive(Serialize, Deserialize)]
@@ -26,8 +26,11 @@
 /// // XXX: depythonize is not yet implemented!
 /// ```
 
+
+use pyo3::prelude::*;
+use pyo3::{PyErr, PyNativeType, PyObject, PyResult, Python};
+use pyo3::exceptions::PyException;
 use pyo3::types::{PyDict, PyList, PyTuple};
-use pyo3::{IntoPy, PyErr, PyNativeType, PyObject, PyResult, Python};
 use serde::{ser, Serialize, Serializer};
 
 pub fn pythonize<T: Serialize>(py: Python, value: T) -> PyResult<PyObject> {
@@ -42,17 +45,17 @@ pub fn depythonize<T>(_py: Python, _obj: PyObject) -> T {
 pub struct PythonizerError(PyErr);
 
 impl ser::Error for PythonizerError {
-    fn custom<T>(_msg: T) -> Self
+    fn custom<T>(msg: T) -> Self
     where
         T: std::fmt::Display,
     {
-        todo!()
+        PythonizerError(PyException::new_err(msg.to_string()))
     }
 }
 
 impl std::fmt::Display for PythonizerError {
-    fn fmt(&self, _f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        todo!()
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
     }
 }
 
@@ -153,8 +156,8 @@ impl<'py> Serializer for Pythonizer<'py> {
     fn serialize_f64(self, v: f64) -> Result<Self::Ok, Self::Error> {
         Ok(v.into_py(self.py))
     }
-    fn serialize_char(self, _v: char) -> Result<Self::Ok, Self::Error> {
-        todo!()
+    fn serialize_char(self, v: char) -> Result<Self::Ok, Self::Error> {
+        Ok(v.to_string().into_py(self.py))
     }
     fn serialize_str(self, v: &str) -> Result<Self::Ok, Self::Error> {
         Ok(v.into_py(self.py))
