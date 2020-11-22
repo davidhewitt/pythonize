@@ -368,134 +368,126 @@ impl ser::SerializeStructVariant for PythonStructVariantSerializer<'_> {
 mod test {
     use super::pythonize;
     use maplit::hashmap;
-    use paste::paste;
     use pyo3::types::PyDict;
     use pyo3::{PyResult, Python};
     use serde::{Deserialize, Serialize};
 
-    macro_rules! test_sample {
-        ($name:ident, $sample:expr, $expected:literal) => {
-            paste!(
-                #[test]
-                fn [<test_sample_ $name>] () -> PyResult<()> {
-                    let gil = Python::acquire_gil();
-                    let py = gil.python();
+    fn test_ser<T>(src: T, expected: &str)
+    where
+        T: Serialize,
+    {
+        Python::with_gil(|py| -> PyResult<()> {
+            let obj = pythonize(py, &src)?;
 
-                    let sample = $sample;
-                    let obj = pythonize(py, &sample)?;
+            let locals = PyDict::new(py);
+            locals.set_item("obj", obj)?;
 
-                    let locals = PyDict::new(py);
-                    locals.set_item("obj", obj)?;
+            py.run(
+                "import json; result = json.dumps(obj, separators=(',', ':'))",
+                None,
+                Some(locals),
+            )?;
+            let result = locals.get_item("result").unwrap().extract::<&str>()?;
 
-                    py.run("import json; result = json.dumps(obj, separators=(',', ':'))", None, Some(locals))?;
-                    let result = locals.get_item("result").unwrap().extract::<&str>()?;
+            assert_eq!(result, expected);
+            assert_eq!(serde_json::to_string(&src).unwrap(), expected);
 
-                    assert_eq!(result, $expected);
-                    assert_eq!(serde_json::to_string(&sample).unwrap(), $expected);
-
-                    Ok(())
-                }
-            );
-        };
+            Ok(())
+        })
+        .unwrap();
     }
 
-    test_sample!(
-        empty_struct,
-        {
-            #[derive(Serialize, Deserialize)]
-            struct Empty;
+    #[test]
+    fn test_empty_struct() {
+        #[derive(Serialize, Deserialize)]
+        struct Empty;
 
-            Empty
-        },
-        r#"null"#
-    );
+        test_ser(Empty, "null");
+    }
 
-    test_sample!(
-        struct,
-        {
-            #[derive(Serialize, Deserialize)]
-            struct Struct {
-                foo: String,
-                bar: usize,
-            }
+    #[test]
+    fn test_struct() {
+        #[derive(Serialize, Deserialize)]
+        struct Struct {
+            foo: String,
+            bar: usize,
+        }
 
+        test_ser(
             Struct {
                 foo: "foo".to_string(),
                 bar: 5,
-            }
-        },
-        r#"{"foo":"foo","bar":5}"#
-    );
+            },
+            r#"{"foo":"foo","bar":5}"#,
+        );
+    }
 
-    test_sample!(
-        tuple_struct,
-        {
-            #[derive(Serialize, Deserialize)]
-            struct TupleStruct(String, usize);
+    #[test]
+    fn test_tuple_struct() {
+        #[derive(Serialize, Deserialize)]
+        struct TupleStruct(String, usize);
 
-            TupleStruct("foo".to_string(), 5)
-        },
-        r#"["foo",5]"#
-    );
+        test_ser(TupleStruct("foo".to_string(), 5), r#"["foo",5]"#);
+    }
 
-    test_sample!(tuple, ("foo", 5), r#"["foo",5]"#);
+    #[test]
+    fn test_tuple() {
+        test_ser(("foo", 5), r#"["foo",5]"#);
+    }
 
-    test_sample!(vec, vec![1, 2, 3], r#"[1,2,3]"#);
+    #[test]
+    fn test_vec() {
+        test_ser(vec![1, 2, 3], r#"[1,2,3]"#);
+    }
 
-    test_sample!(map, hashmap! {"foo" => "foo"}, r#"{"foo":"foo"}"#);
+    #[test]
+    fn test_map() {
+        test_ser(hashmap! {"foo" => "foo"}, r#"{"foo":"foo"}"#);
+    }
 
-    test_sample!(
-        enum_unit_variant,
-        {
-            #[derive(Serialize, Deserialize)]
-            enum E {
-                Empty,
-            }
+    #[test]
+    fn test_enum_unit_variant() {
+        #[derive(Serialize, Deserialize)]
+        enum E {
+            Empty,
+        }
 
-            E::Empty
-        },
-        r#""Empty""#
-    );
+        test_ser(E::Empty, r#""Empty""#);
+    }
 
-    test_sample!(
-        enum_tuple_variant,
-        {
-            #[derive(Serialize, Deserialize)]
-            enum E {
-                Tuple(i32, String),
-            }
+    #[test]
+    fn test_enum_tuple_variant() {
+        #[derive(Serialize, Deserialize)]
+        enum E {
+            Tuple(i32, String),
+        }
 
-            E::Tuple(5, "foo".to_string())
-        },
-        r#"{"Tuple":[5,"foo"]}"#
-    );
+        test_ser(E::Tuple(5, "foo".to_string()), r#"{"Tuple":[5,"foo"]}"#);
+    }
 
-    test_sample!(
-        enum_newtype_variant,
-        {
-            #[derive(Serialize, Deserialize)]
-            enum E {
-                NewType(String),
-            }
+    #[test]
+    fn test_enum_newtype_variant() {
+        #[derive(Serialize, Deserialize)]
+        enum E {
+            NewType(String),
+        }
 
-            E::NewType("foo".to_string())
-        },
-        r#"{"NewType":"foo"}"#
-    );
+        test_ser(E::NewType("foo".to_string()), r#"{"NewType":"foo"}"#);
+    }
 
-    test_sample!(
-        enum_struct_variant,
-        {
-            #[derive(Serialize, Deserialize)]
-            enum E {
-                Struct { foo: String, bar: usize },
-            }
+    #[test]
+    fn test_enum_struct_variant() {
+        #[derive(Serialize, Deserialize)]
+        enum E {
+            Struct { foo: String, bar: usize },
+        }
 
+        test_ser(
             E::Struct {
                 foo: "foo".to_string(),
                 bar: 5,
-            }
-        },
-        r#"{"Struct":{"foo":"foo","bar":5}}"#
-    );
+            },
+            r#"{"Struct":{"foo":"foo","bar":5}}"#,
+        );
+    }
 }
