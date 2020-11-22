@@ -42,20 +42,18 @@ impl<'de> Depythonizer<'de> {
         match self.current {
             GetItemKey::Key(k) => {
                 let dict: &PyDict = self.input.cast_as()?;
-                Ok(dict.get_item(&k).map(|obj| obj.into()))
+                Ok(dict.get_item(&k))
             }
             GetItemKey::Index(i) => {
                 let list: &PyList = self.input.cast_as()?;
                 let len = list.len() as isize;
-                if i >= len {
-                    Ok(None)
-                } else if i < -len {
+                if (i >= len) || (i < -len) {
                     Ok(None)
                 } else {
-                    Ok(Some(list.get_item(i).into()))
+                    Ok(Some(list.get_item(i)))
                 }
             }
-            GetItemKey::None => Ok(Some(self.input.clone())),
+            GetItemKey::None => Ok(Some(self.input)),
         }
     }
 
@@ -94,9 +92,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_unit(visitor)
         } else if PyBool::is_instance(obj) {
             self.deserialize_bool(visitor)
-        } else if PyByteArray::is_instance(obj) {
-            self.deserialize_bytes(visitor)
-        } else if PyBytes::is_instance(obj) {
+        } else if PyByteArray::is_instance(obj) || PyBytes::is_instance(obj) {
             self.deserialize_bytes(visitor)
         } else if PyDict::is_instance(obj) {
             self.deserialize_map(visitor)
