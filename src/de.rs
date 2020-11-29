@@ -86,7 +86,18 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let obj = self.get_item_or_missing()?;
+        let obj = if self.as_key {
+            match self.current {
+                GetItemKey::Key(key) => key,
+                _ => {
+                    return Err(PythonizeError::msg(
+                        "as_key was set without a current GetItemKey::Key",
+                    ))
+                }
+            }
+        } else {
+            self.get_item_or_missing()?
+        };
 
         if obj.is_none() {
             self.deserialize_unit(visitor)
@@ -591,6 +602,25 @@ mod test {
             bar: 25,
         };
         let code = "{'Struct': {'foo': 'cat', 'bar': 25}}";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_enum_untagged_struct_variant() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        #[serde(untagged)]
+        enum Foo {
+            Bar(Bar),
+        }
+
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Bar {
+            val1: i64,
+            val2: i64,
+        }
+
+        let expected = Foo::Bar(Bar { val1: 4, val2: 100 });
+        let code = "{'val1': 4, 'val2': 100}";
         test_de(code, &expected);
     }
 
