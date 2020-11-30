@@ -604,23 +604,45 @@ mod test {
         let code = "{'Struct': {'foo': 'cat', 'bar': 25}}";
         test_de(code, &expected);
     }
+    #[test]
+    fn test_enum_untagged_tuple_variant() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        #[serde(untagged)]
+        enum Foo {
+            Tuple(f32, char),
+        }
+
+        let expected = Foo::Tuple(12.0, 'c');
+        let code = "[12.0, 'c']";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_enum_untagged_newtype_variant() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        #[serde(untagged)]
+        enum Foo {
+            NewType(String),
+        }
+
+        let expected = Foo::NewType("cat".to_string());
+        let code = "'cat'";
+        test_de(code, &expected);
+    }
 
     #[test]
     fn test_enum_untagged_struct_variant() {
         #[derive(Debug, Deserialize, PartialEq)]
         #[serde(untagged)]
         enum Foo {
-            Bar(Bar),
+            Struct { foo: String, bar: i32 },
         }
 
-        #[derive(Debug, Deserialize, PartialEq)]
-        struct Bar {
-            val1: i64,
-            val2: i64,
-        }
-
-        let expected = Foo::Bar(Bar { val1: 4, val2: 100 });
-        let code = "{'val1': 4, 'val2': 100}";
+        let expected = Foo::Struct {
+            foo: "cat".to_string(),
+            bar: -25,
+        };
+        let code = "{'foo': 'cat', 'bar': -25}";
         test_de(code, &expected);
     }
 
