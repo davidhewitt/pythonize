@@ -40,17 +40,13 @@ impl<'de> Depythonizer<'de> {
 
     fn get_item(&self) -> Result<Option<&'de PyAny>> {
         match self.current {
-            GetItemKey::Key(k) => {
-                let dict: &PyDict = self.input.cast_as()?;
-                Ok(dict.get_item(&k))
-            }
+            GetItemKey::Key(k) => Ok(Some(self.input.get_item(&k)?)),
             GetItemKey::Index(i) => {
-                let list: &PyList = self.input.cast_as()?;
-                let len = list.len() as isize;
+                let len = self.input.len()? as isize;
                 if (i >= len) || (i < -len) {
                     Ok(None)
                 } else {
-                    Ok(Some(list.get_item(i)))
+                    Ok(Some(self.input.get_item(i)?))
                 }
             }
             GetItemKey::None => Ok(Some(self.input)),
@@ -529,12 +525,19 @@ mod test {
         struct TupleStruct(String, f64);
 
         let expected = TupleStruct("cat".to_string(), -10.05);
-        let code = "['cat', -10.05]";
+        let code = "('cat', -10.05)";
         test_de(code, &expected);
     }
 
     #[test]
     fn test_tuple() {
+        let expected = ("foo".to_string(), 5);
+        let code = "('foo', 5)";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_tuple_from_pylist() {
         let expected = ("foo".to_string(), 5);
         let code = "['foo', 5]";
         test_de(code, &expected);
