@@ -530,6 +530,16 @@ mod test {
     }
 
     #[test]
+    fn test_tuple_struct_from_pylist() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct TupleStruct(String, f64);
+
+        let expected = TupleStruct("cat".to_string(), -10.05);
+        let code = "['cat', -10.05]";
+        test_de(code, &expected);
+    }
+
+    #[test]
     fn test_tuple() {
         let expected = ("foo".to_string(), 5);
         let code = "('foo', 5)";
@@ -547,6 +557,13 @@ mod test {
     fn test_vec() {
         let expected = vec![3, 2, 1];
         let code = "[3, 2, 1]";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_vec_from_tuple() {
+        let expected = vec![3, 2, 1];
+        let code = "(3, 2, 1)";
         test_de(code, &expected);
     }
 
@@ -638,14 +655,14 @@ mod test {
         #[derive(Debug, Deserialize, PartialEq)]
         #[serde(untagged)]
         enum Foo {
-            Struct { foo: String, bar: i32 },
+            Struct { foo: Vec<char>, bar: [u8; 4] },
         }
 
         let expected = Foo::Struct {
-            foo: "cat".to_string(),
-            bar: -25,
+            foo: vec!['a', 'b', 'c'],
+            bar: [2, 5, 3, 1],
         };
-        let code = "{'foo': 'cat', 'bar': -25}";
+        let code = "{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}";
         test_de(code, &expected);
     }
 
