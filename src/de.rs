@@ -239,9 +239,9 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let seq = self.get_item_or_missing()?;
+        let seq: &PySequence = self.get_item_or_missing()?.downcast()?;
         let mut dep = Depythonizer::from_object(seq);
-        visitor.visit_seq(PyListAccess::new(&mut dep))
+        visitor.visit_seq(PyListAccess::new(&mut dep, seq.len()?))
     }
 
     fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
@@ -353,11 +353,12 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
 struct PyListAccess<'a, 'de> {
     de: &'a mut Depythonizer<'de>,
     index: isize,
+    len: isize,
 }
 
 impl<'a, 'de> PyListAccess<'a, 'de> {
-    fn new(de: &'a mut Depythonizer<'de>) -> Self {
-        Self { de, index: 0 }
+    fn new(de: &'a mut Depythonizer<'de>, len: isize) -> Self {
+        Self { de, index: 0, len }
     }
 }
 
@@ -369,10 +370,11 @@ impl<'a, 'de> de::SeqAccess<'de> for PyListAccess<'a, 'de> {
         T: de::DeserializeSeed<'de>,
     {
         self.de.current = GetItemKey::Index(self.index);
-        self.index += 1;
-        match self.de.get_item()? {
-            Some(_obj) => seed.deserialize(&mut *self.de).map(Some),
-            None => Ok(None),
+        if self.index < self.len {
+            self.index += 1;
+            seed.deserialize(&mut *self.de).map(Some)
+        } else {
+            Ok(None)
         }
     }
 }
@@ -460,7 +462,10 @@ impl<'a, 'de> de::VariantAccess<'de> for PyEnumAccess<'a, 'de> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(PyListAccess::new(self.de))
+        visitor.visit_seq(PyListAccess::new(
+            self.de,
+            self.de.input.downcast::<PySequence>()?.len()?,
+        ))
     }
 
     fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
@@ -476,8 +481,9 @@ mod test {
     use super::*;
     use maplit::hashmap;
     use pyo3::Python;
+    use serde_json::{json, Value as JsonValue};
 
-    fn test_de<T>(code: &str, expected: &T)
+    fn test_de<T>(code: &str, expected: &T, expected_json: &JsonValue)
     where
         T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
     {
@@ -489,6 +495,8 @@ mod test {
         let obj = locals.get_item("obj").unwrap();
         let actual: T = depythonize(obj).unwrap();
         assert_eq!(&actual, expected);
+        let actual_json: JsonValue = depythonize(obj).unwrap();
+        assert_eq!(&actual_json, expected_json);
     }
 
     #[test]
@@ -497,8 +505,9 @@ mod test {
         struct Empty;
 
         let expected = Empty;
+        let expected_json = json!(null);
         let code = "None";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -515,8 +524,13 @@ mod test {
             bar: 8usize,
             baz: 45.23,
         };
+        let expected_json = json!({
+            "foo": "Foo",
+            "bar": 8,
+            "baz": 45.23
+        });
         let code = "{'foo': 'Foo', 'bar': 8, 'baz': 45.23}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -525,8 +539,9 @@ mod test {
         struct TupleStruct(String, f64);
 
         let expected = TupleStruct("cat".to_string(), -10.05);
+        let expected_json = json!(["cat", -10.05]);
         let code = "('cat', -10.05)";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -535,43 +550,49 @@ mod test {
         struct TupleStruct(String, f64);
 
         let expected = TupleStruct("cat".to_string(), -10.05);
+        let expected_json = json!(["cat", -10.05]);
         let code = "['cat', -10.05]";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
     fn test_tuple() {
         let expected = ("foo".to_string(), 5);
+        let expected_json = json!(["foo", 5]);
         let code = "('foo', 5)";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
     fn test_tuple_from_pylist() {
         let expected = ("foo".to_string(), 5);
+        let expected_json = json!(["foo", 5]);
         let code = "['foo', 5]";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
     fn test_vec() {
         let expected = vec![3, 2, 1];
+        let expected_json = json!([3, 2, 1]);
         let code = "[3, 2, 1]";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
     fn test_vec_from_tuple() {
         let expected = vec![3, 2, 1];
+        let expected_json = json!([3, 2, 1]);
         let code = "(3, 2, 1)";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
     fn test_hashmap() {
         let expected = hashmap! {"foo".to_string() => 4};
+        let expected_json = json!({"foo": 4 });
         let code = "{'foo': 4}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -582,8 +603,9 @@ mod test {
         }
 
         let expected = Foo::Variant;
+        let expected_json = json!("Variant");
         let code = "'Variant'";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -594,8 +616,9 @@ mod test {
         }
 
         let expected = Foo::Tuple(12, "cat".to_string());
+        let expected_json = json!({"Tuple": [12, "cat"]});
         let code = "{'Tuple': [12, 'cat']}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -606,8 +629,9 @@ mod test {
         }
 
         let expected = Foo::NewType("cat".to_string());
+        let expected_json = json!({"NewType": "cat" });
         let code = "{'NewType': 'cat'}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -621,8 +645,9 @@ mod test {
             foo: "cat".to_string(),
             bar: 25,
         };
+        let expected_json = json!({"Struct": {"foo": "cat", "bar": 25 }});
         let code = "{'Struct': {'foo': 'cat', 'bar': 25}}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
     #[test]
     fn test_enum_untagged_tuple_variant() {
@@ -633,8 +658,9 @@ mod test {
         }
 
         let expected = Foo::Tuple(12.0, 'c');
+        let expected_json = json!([12.0, 'c']);
         let code = "[12.0, 'c']";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -646,8 +672,9 @@ mod test {
         }
 
         let expected = Foo::NewType("cat".to_string());
+        let expected_json = json!("cat");
         let code = "'cat'";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -662,8 +689,9 @@ mod test {
             foo: vec!['a', 'b', 'c'],
             bar: [2, 5, 3, 1],
         };
+        let expected_json = json!({"foo": ["a", "b", "c"], "bar": [2, 5, 3, 1]});
         let code = "{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 
     #[test]
@@ -693,7 +721,9 @@ mod test {
                 variant: Baz::Tuple(-1.5, 8),
             },
         };
+        let expected_json =
+            json!({"name": "SomeFoo", "bar": { "value": 13, "variant": { "Tuple": [-1.5, 8]}}});
         let code = "{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}";
-        test_de(code, &expected);
+        test_de(code, &expected, &expected_json);
     }
 }
