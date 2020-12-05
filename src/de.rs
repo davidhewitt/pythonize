@@ -40,17 +40,13 @@ impl<'de> Depythonizer<'de> {
 
     fn get_item(&self) -> Result<Option<&'de PyAny>> {
         match self.current {
-            GetItemKey::Key(k) => {
-                let dict: &PyDict = self.input.cast_as()?;
-                Ok(dict.get_item(&k))
-            }
+            GetItemKey::Key(k) => Ok(Some(self.input.get_item(&k)?)),
             GetItemKey::Index(i) => {
-                let list: &PyList = self.input.cast_as()?;
-                let len = list.len() as isize;
+                let len = self.input.len()? as isize;
                 if (i >= len) || (i < -len) {
                     Ok(None)
                 } else {
-                    Ok(Some(list.get_item(i)))
+                    Ok(Some(self.input.get_item(i)?))
                 }
             }
             GetItemKey::None => Ok(Some(self.input)),
@@ -86,7 +82,18 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let obj = self.get_item_or_missing()?;
+        let obj = if self.as_key {
+            match self.current {
+                GetItemKey::Key(key) => key,
+                _ => {
+                    return Err(PythonizeError::msg(
+                        "as_key was set without a current GetItemKey::Key",
+                    ))
+                }
+            }
+        } else {
+            self.get_item_or_missing()?
+        };
 
         if obj.is_none() {
             self.deserialize_unit(visitor)
@@ -518,12 +525,29 @@ mod test {
         struct TupleStruct(String, f64);
 
         let expected = TupleStruct("cat".to_string(), -10.05);
+        let code = "('cat', -10.05)";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_tuple_struct_from_pylist() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct TupleStruct(String, f64);
+
+        let expected = TupleStruct("cat".to_string(), -10.05);
         let code = "['cat', -10.05]";
         test_de(code, &expected);
     }
 
     #[test]
     fn test_tuple() {
+        let expected = ("foo".to_string(), 5);
+        let code = "('foo', 5)";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_tuple_from_pylist() {
         let expected = ("foo".to_string(), 5);
         let code = "['foo', 5]";
         test_de(code, &expected);
@@ -533,6 +557,13 @@ mod test {
     fn test_vec() {
         let expected = vec![3, 2, 1];
         let code = "[3, 2, 1]";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_vec_from_tuple() {
+        let expected = vec![3, 2, 1];
+        let code = "(3, 2, 1)";
         test_de(code, &expected);
     }
 
@@ -591,6 +622,47 @@ mod test {
             bar: 25,
         };
         let code = "{'Struct': {'foo': 'cat', 'bar': 25}}";
+        test_de(code, &expected);
+    }
+    #[test]
+    fn test_enum_untagged_tuple_variant() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        #[serde(untagged)]
+        enum Foo {
+            Tuple(f32, char),
+        }
+
+        let expected = Foo::Tuple(12.0, 'c');
+        let code = "[12.0, 'c']";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_enum_untagged_newtype_variant() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        #[serde(untagged)]
+        enum Foo {
+            NewType(String),
+        }
+
+        let expected = Foo::NewType("cat".to_string());
+        let code = "'cat'";
+        test_de(code, &expected);
+    }
+
+    #[test]
+    fn test_enum_untagged_struct_variant() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        #[serde(untagged)]
+        enum Foo {
+            Struct { foo: Vec<char>, bar: [u8; 4] },
+        }
+
+        let expected = Foo::Struct {
+            foo: vec!['a', 'b', 'c'],
+            bar: [2, 5, 3, 1],
+        };
+        let code = "{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}";
         test_de(code, &expected);
     }
 
