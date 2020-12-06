@@ -10,7 +10,7 @@ pub type Result<T> = result::Result<T, PythonizeError>;
 
 /// Errors that can occur when serializing/deserializing Python objects
 pub struct PythonizeError {
-    inner: Box<ErrorImpl>,
+    pub(crate) inner: Box<ErrorImpl>,
 }
 
 impl PythonizeError {
@@ -20,15 +20,6 @@ impl PythonizeError {
     {
         Self {
             inner: Box::new(ErrorImpl::Message(text.to_string())),
-        }
-    }
-
-    pub(crate) fn missing<T>(key: T) -> Self
-    where
-        T: Debug,
-    {
-        Self {
-            inner: Box::new(ErrorImpl::MissingField(format!("{:?}", key))),
         }
     }
 
@@ -44,6 +35,12 @@ impl PythonizeError {
     pub(crate) fn dict_key_not_string() -> Self {
         Self {
             inner: Box::new(ErrorImpl::DictKeyNotString),
+        }
+    }
+
+    pub(crate) fn incorrect_sequence_length(expected: usize, got: usize) -> Self {
+        Self {
+            inner: Box::new(ErrorImpl::IncorrectSequenceLength { expected, got }),
         }
     }
 
@@ -73,14 +70,14 @@ pub enum ErrorImpl {
     PyErr(PyErr),
     /// Generic error message
     Message(String),
-    /// Expected key is missing from a Python dict or iterable
-    MissingField(String),
     /// A Python type not supported by the deserializer
     UnsupportedType(String),
     /// A `PyAny` object that failed to downcast to an expected Python type
     UnexpectedType(String),
     /// Dict keys should be strings to deserialize to struct fields
     DictKeyNotString,
+    /// Sequence length did not match expected tuple or tuple struct length.
+    IncorrectSequenceLength { expected: usize, got: usize },
     /// Enum variants should either be dict (tagged) or str (variant)
     InvalidEnumType,
     /// Tagged enum variants should be a dict with exactly 1 key
@@ -96,10 +93,12 @@ impl Display for PythonizeError {
         match self.inner.as_ref() {
             ErrorImpl::PyErr(e) => Display::fmt(e, f),
             ErrorImpl::Message(s) => Display::fmt(s, f),
-            ErrorImpl::MissingField(s) => Display::fmt(s, f),
             ErrorImpl::UnsupportedType(s) => write!(f, "unsupported type {}", s),
             ErrorImpl::UnexpectedType(s) => write!(f, "unexpected type: {}", s),
             ErrorImpl::DictKeyNotString => f.write_str("dict keys must have type str"),
+            ErrorImpl::IncorrectSequenceLength { expected, got } => {
+                write!(f, "expected sequence of length {}, got {}", expected, got)
+            }
             ErrorImpl::InvalidEnumType => f.write_str("expected either a str or dict for enum"),
             ErrorImpl::InvalidLengthEnum => {
                 f.write_str("expected tagged enum dict to have exactly 1 key")
@@ -111,17 +110,7 @@ impl Display for PythonizeError {
 
 impl Debug for PythonizeError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.inner.as_ref() {
-            ErrorImpl::PyErr(e) => f.debug_tuple("PyErr").field(e).finish(),
-            ErrorImpl::Message(s) => f.debug_tuple("Message").field(s).finish(),
-            ErrorImpl::MissingField(s) => f.debug_tuple("MissingField").field(s).finish(),
-            ErrorImpl::UnsupportedType(s) => f.debug_tuple("UnsupportedType").field(s).finish(),
-            ErrorImpl::UnexpectedType(s) => f.debug_tuple("UnexpectedType").field(s).finish(),
-            ErrorImpl::DictKeyNotString => f.debug_tuple("DictKeyNotString").finish(),
-            ErrorImpl::InvalidEnumType => f.debug_tuple("InvalidEnumType").finish(),
-            ErrorImpl::InvalidLengthEnum => f.debug_tuple("InvalidLengthEnum").finish(),
-            ErrorImpl::InvalidLengthChar => f.debug_tuple("InvalidLengthChar").finish(),
-        }
+        self.inner.as_ref().fmt(f)
     }
 }
 
@@ -171,13 +160,13 @@ impl From<PythonizeError> for PyErr {
         match *other.inner {
             ErrorImpl::PyErr(e) => e,
             ErrorImpl::Message(e) => PyException::new_err(e),
-            ErrorImpl::MissingField(e) => PyKeyError::new_err(e),
-            ErrorImpl::UnsupportedType(_) => PyTypeError::new_err(other.to_string()),
-            ErrorImpl::UnexpectedType(_) => PyTypeError::new_err(other.to_string()),
-            ErrorImpl::DictKeyNotString => PyTypeError::new_err(other.to_string()),
-            ErrorImpl::InvalidEnumType => PyTypeError::new_err(other.to_string()),
-            ErrorImpl::InvalidLengthEnum => PyValueError::new_err(other.to_string()),
-            ErrorImpl::InvalidLengthChar => PyValueError::new_err(other.to_string()),
+            ErrorImpl::UnsupportedType(_)
+            | ErrorImpl::UnexpectedType(_)
+            | ErrorImpl::DictKeyNotString
+            | ErrorImpl::InvalidEnumType => PyTypeError::new_err(other.to_string()),
+            ErrorImpl::IncorrectSequenceLength { .. }
+            | ErrorImpl::InvalidLengthEnum
+            | ErrorImpl::InvalidLengthChar => PyValueError::new_err(other.to_string()),
         }
     }
 }

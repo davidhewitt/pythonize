@@ -2,6 +2,7 @@ use pyo3::type_object::PyTypeInfo;
 use pyo3::types::*;
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
+use std::convert::TryInto;
 
 use crate::error::{PythonizeError, Result};
 
@@ -14,53 +15,33 @@ where
     T::deserialize(&mut depythonizer)
 }
 
-#[derive(Debug)]
-enum GetItemKey<'de> {
-    Key(&'de PyAny),
-    Index(isize),
-    None,
-}
-
 pub struct Depythonizer<'de> {
     input: &'de PyAny,
-    // Denotes the current dict key or collection index we are deserializing
-    current: GetItemKey<'de>,
-    // Used to indicate the current string being deserialized is a dict key not value
-    as_key: bool,
 }
 
 impl<'de> Depythonizer<'de> {
     pub fn from_object(input: &'de PyAny) -> Self {
-        Depythonizer {
-            input,
-            current: GetItemKey::None,
-            as_key: false,
+        Depythonizer { input }
+    }
+
+    fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'de>> {
+        let seq: &PySequence = self.input.downcast()?;
+        let len = seq.len()?;
+        let len_usize: usize = len.try_into().expect("negative sequence length");
+
+        match expected_len {
+            Some(expected) if expected != len_usize => Err(
+                PythonizeError::incorrect_sequence_length(expected, len_usize),
+            ),
+            _ => Ok(PySequenceAccess::new(seq, len)),
         }
     }
 
-    fn get_item(&self) -> Result<Option<&'de PyAny>> {
-        match self.current {
-            GetItemKey::Key(k) => Ok(Some(self.input.get_item(&k)?)),
-            GetItemKey::Index(i) => {
-                let len = self.input.len()? as isize;
-                if (i >= len) || (i < -len) {
-                    Ok(None)
-                } else {
-                    Ok(Some(self.input.get_item(i)?))
-                }
-            }
-            GetItemKey::None => Ok(Some(self.input)),
-        }
-    }
-
-    fn get_item_or_missing(&self) -> Result<&'de PyAny> {
-        self.get_item()?
-            .ok_or_else(|| PythonizeError::missing(&self.current))
-    }
-
-    fn get_dict_keys(&self) -> Result<Vec<&'de PyAny>> {
-        let d: &PyDict = self.get_item_or_missing()?.cast_as()?;
-        Ok(d.keys().iter().collect())
+    fn dict_access(
+        &self,
+    ) -> Result<PyDictAccess<'de, impl Iterator<Item = (&'de PyAny, &'de PyAny)>>> {
+        let dict: &PyDict = self.input.downcast()?;
+        Ok(PyDictAccess::new(dict.iter()))
     }
 }
 
@@ -70,7 +51,7 @@ macro_rules! deserialize_type {
         where
             V: de::Visitor<'de>,
         {
-            visitor.$visit(self.get_item_or_missing()?.extract()?)
+            visitor.$visit(self.input.extract()?)
         }
     };
 }
@@ -82,18 +63,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let obj = if self.as_key {
-            match self.current {
-                GetItemKey::Key(key) => key,
-                _ => {
-                    return Err(PythonizeError::msg(
-                        "as_key was set without a current GetItemKey::Key",
-                    ))
-                }
-            }
-        } else {
-            self.get_item_or_missing()?
-        };
+        let obj = self.input;
 
         if obj.is_none() {
             self.deserialize_unit(visitor)
@@ -130,17 +100,14 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_bool(self.get_item_or_missing()?.is_true()?)
+        visitor.visit_bool(self.input.is_true()?)
     }
 
     fn deserialize_char<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        let s = self
-            .get_item_or_missing()?
-            .cast_as::<PyString>()?
-            .to_str()?;
+        let s = self.input.cast_as::<PyString>()?.to_str()?;
         if s.len() != 1 {
             return Err(PythonizeError::invalid_length_char());
         }
@@ -162,18 +129,8 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if self.as_key {
-            match self.current {
-                GetItemKey::Key(key) => {
-                    let k: &PyString = key.cast_as()?;
-                    visitor.visit_str(k.to_str()?)
-                }
-                _ => visitor.visit_str(""),
-            }
-        } else {
-            let s: &PyString = self.get_item_or_missing()?.cast_as()?;
-            visitor.visit_str(s.to_str()?)
-        }
+        let s: &PyString = self.input.cast_as()?;
+        visitor.visit_str(s.to_str()?)
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -187,7 +144,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let obj = self.get_item_or_missing()?;
+        let obj = self.input;
         let b: &PyBytes = obj.cast_as()?;
         visitor.visit_bytes(b.as_bytes())
     }
@@ -203,7 +160,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if self.get_item_or_missing()?.is_none() {
+        if self.input.is_none() {
             visitor.visit_none()
         } else {
             visitor.visit_some(self)
@@ -214,7 +171,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        if self.get_item_or_missing()?.is_none() {
+        if self.input.is_none() {
             visitor.visit_unit()
         } else {
             Err(PythonizeError::msg("expected None"))
@@ -239,46 +196,33 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let seq: &PySequence = self.get_item_or_missing()?.downcast()?;
-        let mut dep = Depythonizer::from_object(seq);
-        visitor.visit_seq(PyListAccess::new(&mut dep, seq.len()?))
+        visitor.visit_seq(self.sequence_access(None)?)
     }
 
-    fn deserialize_tuple<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        visitor.visit_seq(self.sequence_access(Some(len))?)
     }
 
     fn deserialize_tuple_struct<V>(
         self,
         _name: &'static str,
-        _len: usize,
+        len: usize,
         visitor: V,
     ) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        self.deserialize_seq(visitor)
+        visitor.visit_seq(self.sequence_access(Some(len))?)
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        match self.current {
-            GetItemKey::None => {
-                let keys = self.get_dict_keys()?;
-                visitor.visit_map(PyDictAccess::new(self, keys))
-            }
-            _ => {
-                let obj = self.get_item_or_missing()?;
-                let keys = self.get_dict_keys()?;
-                let mut dep = Depythonizer::from_object(obj);
-                visitor.visit_map(PyDictAccess::new(&mut dep, keys))
-            }
-        }
+        visitor.visit_map(self.dict_access()?)
     }
 
     fn deserialize_struct<V>(
@@ -302,7 +246,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let item = self.get_item_or_missing()?;
+        let item = self.input;
         if PyDict::is_instance(item) {
             // Get the enum variant from the dict key
             let d: &PyDict = item.cast_as().unwrap();
@@ -329,17 +273,11 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        match &self.current {
-            // Deserialize map key
-            GetItemKey::Key(obj) => {
-                let s: &PyString = obj
-                    .cast_as()
-                    .map_err(|_| PythonizeError::dict_key_not_string())?;
-                visitor.visit_str(s.to_str()?)
-            }
-            // Deserialize externally-tagged enum variant
-            _ => Err(PythonizeError::dict_key_not_string()),
-        }
+        let s: &PyString = self
+            .input
+            .cast_as()
+            .map_err(|_| PythonizeError::dict_key_not_string())?;
+        visitor.visit_str(s.to_str()?)
     }
 
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
@@ -350,62 +288,72 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     }
 }
 
-struct PyListAccess<'a, 'de> {
-    de: &'a mut Depythonizer<'de>,
+struct PySequenceAccess<'a> {
+    seq: &'a PySequence,
     index: isize,
     len: isize,
 }
 
-impl<'a, 'de> PyListAccess<'a, 'de> {
-    fn new(de: &'a mut Depythonizer<'de>, len: isize) -> Self {
-        Self { de, index: 0, len }
+impl<'a> PySequenceAccess<'a> {
+    fn new(seq: &'a PySequence, len: isize) -> Self {
+        Self { seq, index: 0, len }
     }
 }
 
-impl<'a, 'de> de::SeqAccess<'de> for PyListAccess<'a, 'de> {
+impl<'de> de::SeqAccess<'de> for PySequenceAccess<'de> {
     type Error = PythonizeError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
     where
         T: de::DeserializeSeed<'de>,
     {
-        self.de.current = GetItemKey::Index(self.index);
         if self.index < self.len {
+            let mut item_de = Depythonizer::from_object(self.seq.get_item(self.index)?);
             self.index += 1;
-            seed.deserialize(&mut *self.de).map(Some)
+            seed.deserialize(&mut item_de).map(Some)
         } else {
             Ok(None)
         }
     }
 }
 
-struct PyDictAccess<'a, 'de> {
-    de: &'a mut Depythonizer<'de>,
-    keys: Vec<&'de PyAny>,
-    index: usize,
+struct PyDictAccess<'de, Iter>
+where
+    Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
+{
+    iter: Iter, // TODO: figure out why PyDictIterator is not publicly accessible upstream?
+    next_value: Option<&'de PyAny>,
 }
 
-impl<'a, 'de> PyDictAccess<'a, 'de> {
-    fn new(de: &'a mut Depythonizer<'de>, keys: Vec<&'de PyAny>) -> Self {
-        Self { de, keys, index: 0 }
+impl<'de, Iter> PyDictAccess<'de, Iter>
+where
+    Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
+{
+    fn new(iter: Iter) -> Self {
+        Self {
+            iter,
+            next_value: None,
+        }
     }
 }
 
-impl<'a, 'de> de::MapAccess<'de> for PyDictAccess<'a, 'de> {
+impl<'de, Iter> de::MapAccess<'de> for PyDictAccess<'de, Iter>
+where
+    Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
+{
     type Error = PythonizeError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
     where
         K: de::DeserializeSeed<'de>,
     {
-        if self.index >= self.keys.len() {
-            Ok(None)
-        } else {
-            let key = self.keys[self.index];
-            self.de.current = GetItemKey::Key(key);
-            self.de.as_key = true;
-            self.index += 1;
-            seed.deserialize(&mut *self.de).map(Some)
+        match self.iter.next() {
+            None => Ok(None),
+            Some((key, value)) => {
+                self.next_value = Some(value);
+                seed.deserialize(&mut Depythonizer::from_object(key))
+                    .map(Some)
+            }
         }
     }
 
@@ -413,8 +361,11 @@ impl<'a, 'de> de::MapAccess<'de> for PyDictAccess<'a, 'de> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        self.de.as_key = false;
-        seed.deserialize(&mut *self.de)
+        let value = self
+            .next_value
+            .take()
+            .expect("call next_value_seed after next_key_seed");
+        seed.deserialize(&mut Depythonizer::from_object(value))
     }
 }
 
@@ -458,27 +409,25 @@ impl<'a, 'de> de::VariantAccess<'de> for PyEnumAccess<'a, 'de> {
         seed.deserialize(self.de)
     }
 
-    fn tuple_variant<V>(self, _len: usize, visitor: V) -> Result<V::Value>
+    fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(PyListAccess::new(
-            self.de,
-            self.de.input.downcast::<PySequence>()?.len()?,
-        ))
+        visitor.visit_seq(self.de.sequence_access(Some(len))?)
     }
 
     fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_map(PyDictAccess::new(self.de, self.de.get_dict_keys()?))
+        visitor.visit_map(self.de.dict_access()?)
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::error::ErrorImpl;
     use maplit::hashmap;
     use pyo3::Python;
     use serde_json::{json, Value as JsonValue};
@@ -534,6 +483,28 @@ mod test {
     }
 
     #[test]
+    fn test_struct_missing_key() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Struct {
+            foo: String,
+            bar: usize,
+        }
+
+        let code = "{'foo': 'Foo'}";
+
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let locals = PyDict::new(py);
+        py.run(&format!("obj = {}", code), None, Some(locals))
+            .unwrap();
+        let obj = locals.get_item("obj").unwrap();
+        assert!(matches!(
+            *depythonize::<Struct>(obj).unwrap_err().inner,
+            ErrorImpl::Message(msg) if msg == "missing field `bar`"
+        ));
+    }
+
+    #[test]
     fn test_tuple_struct() {
         #[derive(Debug, Deserialize, PartialEq)]
         struct TupleStruct(String, f64);
@@ -542,6 +513,25 @@ mod test {
         let expected_json = json!(["cat", -10.05]);
         let code = "('cat', -10.05)";
         test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_tuple_too_long() {
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct TupleStruct(String, f64);
+
+        let code = "('cat', -10.05, 'foo')";
+
+        let gil = Python::acquire_gil();
+        let py = gil.python();
+        let locals = PyDict::new(py);
+        py.run(&format!("obj = {}", code), None, Some(locals))
+            .unwrap();
+        let obj = locals.get_item("obj").unwrap();
+        assert!(matches!(
+            *depythonize::<TupleStruct>(obj).unwrap_err().inner,
+            ErrorImpl::IncorrectSequenceLength { expected, got } if expected == 2 && got == 3
+        ));
     }
 
     #[test]
