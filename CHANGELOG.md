@@ -1,3 +1,6 @@
+## Unreleased
+ - Update to PyO3 0.13
+
 ## 0.12.1 - 2020-12-08
  - Require `std` feature of `serde`.
  - Reduce memory consumption when deserializing sequences.
