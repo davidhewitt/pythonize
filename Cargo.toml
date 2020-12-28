@@ -1,6 +1,6 @@
 [package]
 name = "pythonize"
-version = "0.12.1"
+version = "0.13.0"
 authors = ["David Hewitt <1939362+davidhewitt@users.noreply.github.com>"]
 edition = "2018"
 license = "MIT"
