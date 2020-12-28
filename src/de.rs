@@ -1,4 +1,3 @@
-use pyo3::type_object::PyTypeInfo;
 use pyo3::types::*;
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
@@ -67,32 +66,34 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
 
         if obj.is_none() {
             self.deserialize_unit(visitor)
-        } else if PyBool::is_instance(obj) {
+        } else if obj.is_instance::<PyBool>()? {
             self.deserialize_bool(visitor)
-        } else if PyByteArray::is_instance(obj) || PyBytes::is_instance(obj) {
+        } else if obj.is_instance::<PyByteArray>()? || obj.is_instance::<PyBytes>()? {
             self.deserialize_bytes(visitor)
-        } else if PyDict::is_instance(obj) {
+        } else if obj.is_instance::<PyDict>()? {
             self.deserialize_map(visitor)
-        } else if PyFloat::is_instance(obj) {
+        } else if obj.is_instance::<PyFloat>()? {
             self.deserialize_f64(visitor)
-        } else if PyFrozenSet::is_instance(obj) {
+        } else if obj.is_instance::<PyFrozenSet>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if PyInt::is_instance(obj) {
+        } else if obj.is_instance::<PyInt>()? {
             self.deserialize_i64(visitor)
-        } else if PyList::is_instance(obj) {
+        } else if obj.is_instance::<PyList>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if PyLong::is_instance(obj) {
+        } else if obj.is_instance::<PyLong>()? {
             self.deserialize_i64(visitor)
-        } else if PySet::is_instance(obj) {
+        } else if obj.is_instance::<PySet>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if PyString::is_instance(obj) {
+        } else if obj.is_instance::<PyString>()? {
             self.deserialize_str(visitor)
-        } else if PyTuple::is_instance(obj) {
+        } else if obj.is_instance::<PyTuple>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if PyUnicode::is_instance(obj) {
+        } else if obj.is_instance::<PyUnicode>()? {
             self.deserialize_str(visitor)
         } else {
-            Err(PythonizeError::unsupported_type(obj.get_type().name()))
+            Err(PythonizeError::unsupported_type(
+                obj.get_type().name().unwrap_or("<unknown>"),
+            ))
         }
     }
 
@@ -247,7 +248,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
         V: de::Visitor<'de>,
     {
         let item = self.input;
-        if PyDict::is_instance(item) {
+        if item.is_instance::<PyDict>()? {
             // Get the enum variant from the dict key
             let d: &PyDict = item.cast_as().unwrap();
             if d.len() != 1 {
@@ -261,7 +262,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             let value = d.get_item(variant).unwrap();
             let mut de = Depythonizer::from_object(value);
             visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
-        } else if PyString::is_instance(item) {
+        } else if item.is_instance::<PyString>()? {
             let s: &PyString = self.input.cast_as()?;
             visitor.visit_enum(s.to_str()?.into_deserializer())
         } else {
