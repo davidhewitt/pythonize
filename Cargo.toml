@@ -10,6 +10,10 @@ repository = "https://github.com/davidhewitt/pythonize"
 documentation = "https://docs.rs/crate/pythonize/"
 
 
+[features]
+default = []
+hashable_dict = ["pyo3/macros"]
+
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["std"] }
 pyo3 = { version = "0.13", default-features = false }

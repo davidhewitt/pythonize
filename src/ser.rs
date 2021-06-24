@@ -1,8 +1,15 @@
-use pyo3::types::{PyDict, PyList, PyTuple};
-use pyo3::{IntoPy, PyNativeType, PyObject, Python};
+use pyo3::prelude::*;
+use pyo3::types::{PyList, PyTuple};
+use pyo3::{IntoPy, PyObject, Python};
 use serde::{ser, Serialize};
 
+#[cfg(not(feature = "hashable_dict"))]
+use pyo3::{types::PyDict, PyNativeType};
+
+#[cfg(feature = "hashable_dict")]
+use crate::dict::Dict;
 use crate::error::{PythonizeError, Result};
+use crate::{__cfg_if_hashable_dict, __cfg_if_not_hashable_dict};
 
 /// Attempt to convert the given data into a Python object
 pub fn pythonize<T>(py: Python, value: &T) -> Result<PyObject>
@@ -35,15 +42,129 @@ pub struct PythonStructVariantSerializer<'py> {
     inner: PythonDictSerializer<'py>,
 }
 
-#[doc(hidden)]
-pub struct PythonDictSerializer<'py> {
-    dict: &'py PyDict,
+__cfg_if_hashable_dict! {
+    #[doc(hidden)]
+    pub struct PythonDictSerializer<'py> {
+        py: Python<'py>,
+        dict: Dict,
+    }
+
+    #[doc(hidden)]
+    pub struct PythonMapSerializer<'py> {
+        py: Python<'py>,
+        dict: Dict,
+        key: Option<PyObject>,
+    }
+
+    impl<'py> PythonMapSerializer<'py> {
+        fn new(py: Python<'py>) -> Self {
+            Self {
+                py,
+                dict: Dict::new(),
+                key: None,
+            }
+        }
+
+        fn py(&self) -> Python<'py> {
+            self.py
+        }
+
+        fn set_item<T>(&mut self, value: &T) -> PyResult<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            self.dict.set_item(
+                self.py,
+                self.key.take().expect("serialize_value should always be called after serialize_key"),
+                pythonize(self.py, value)?,
+            )?;
+            Ok(())
+        }
+    }
+
+    impl<'py> PythonDictSerializer<'py> {
+        fn new(py: Python<'py>) -> Self {
+            Self {
+                py,
+                dict: Dict::new(),
+            }
+        }
+
+        fn py(&self) -> Python<'py> {
+            self.py
+        }
+
+        fn set_item<T>(&mut self, key: &'static str, value: &T) -> PyResult<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            self.dict.set_item(
+                self.py,
+                key,
+                pythonize(self.py, value)?,
+            )?;
+            Ok(())
+        }
+    }
 }
 
-#[doc(hidden)]
-pub struct PythonMapSerializer<'py> {
-    dict: &'py PyDict,
-    key: Option<PyObject>,
+__cfg_if_not_hashable_dict! {
+    #[doc(hidden)]
+    pub struct PythonDictSerializer<'py> {
+        dict: &'py PyDict,
+    }
+
+    pub struct PythonMapSerializer<'py> {
+        dict: &'py PyDict,
+        key: Option<PyObject>,
+    }
+
+    impl<'py> PythonMapSerializer<'py> {
+        fn new(py: Python<'py>) -> Self {
+            Self {
+                dict: PyDict::new(py),
+                key: None,
+            }
+        }
+
+        fn py(&self) -> Python {
+            self.dict.py()
+        }
+
+        fn set_item<T>(&mut self, value: &T) -> PyResult<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            self.dict.set_item(
+                self.key.take().expect("serialize_value should always be called after serialize_key"),
+                pythonize(self.dict.py(), value)?,
+            )?;
+            Ok(())
+        }
+    }
+
+    impl<'py> PythonDictSerializer<'py> {
+        fn new(py: Python<'py>) -> Self {
+            Self {
+                dict: PyDict::new(py),
+            }
+        }
+
+        fn py(&self) -> Python {
+            self.dict.py()
+        }
+
+        fn set_item<T>(&mut self, key: &'static str, value: &T) -> PyResult<()>
+        where
+            T: ?Sized + Serialize,
+        {
+            self.dict.set_item(
+                key,
+                pythonize(self.dict.py(), value)?,
+            )?;
+            Ok(())
+        }
+    }
 }
 
 impl<'py> ser::Serializer for Pythonizer<'py> {
@@ -158,9 +279,19 @@ impl<'py> ser::Serializer for Pythonizer<'py> {
     where
         T: ?Sized + Serialize,
     {
-        let d = PyDict::new(self.py);
-        d.set_item(variant, value.serialize(self)?)?;
-        Ok(d.into())
+        #[cfg(feature = "hashable_dict")]
+        let obj = {
+            let mut d = Dict::new();
+            d.set_item(self.py, variant, value.serialize(self)?)?;
+            d.into_py(self.py)
+        };
+        #[cfg(not(feature = "hashable_dict"))]
+        let obj = {
+            let d = PyDict::new(self.py);
+            d.set_item(variant, value.serialize(self)?)?;
+            d.into()
+        };
+        Ok(obj)
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<PythonCollectionSerializer<'py>> {
@@ -198,10 +329,7 @@ impl<'py> ser::Serializer for Pythonizer<'py> {
     }
 
     fn serialize_map(self, _len: Option<usize>) -> Result<PythonMapSerializer<'py>> {
-        Ok(PythonMapSerializer {
-            dict: PyDict::new(self.py),
-            key: None,
-        })
+        Ok(PythonMapSerializer::new(self.py))
     }
 
     fn serialize_struct(
@@ -209,9 +337,7 @@ impl<'py> ser::Serializer for Pythonizer<'py> {
         _name: &'static str,
         _len: usize,
     ) -> Result<PythonDictSerializer<'py>> {
-        Ok(PythonDictSerializer {
-            dict: PyDict::new(self.py),
-        })
+        Ok(PythonDictSerializer::new(self.py))
     }
 
     fn serialize_struct_variant(
@@ -221,12 +347,8 @@ impl<'py> ser::Serializer for Pythonizer<'py> {
         variant: &'static str,
         _len: usize,
     ) -> Result<PythonStructVariantSerializer<'py>> {
-        Ok(PythonStructVariantSerializer {
-            variant,
-            inner: PythonDictSerializer {
-                dict: PyDict::new(self.py),
-            },
-        })
+        let inner = PythonDictSerializer::new(self.py);
+        Ok(PythonStructVariantSerializer { variant, inner })
     }
 }
 
@@ -290,6 +412,15 @@ impl ser::SerializeTupleVariant for PythonTupleVariantSerializer<'_> {
         ser::SerializeSeq::serialize_element(&mut self.inner, value)
     }
 
+    #[cfg(feature = "hashable_dict")]
+    fn end(self) -> Result<PyObject> {
+        let mut d = Dict::new();
+        let py = self.inner.py;
+        d.set_item(py, self.variant, ser::SerializeTuple::end(self.inner)?)?;
+        Ok(d.into_py(py))
+    }
+
+    #[cfg(not(feature = "hashable_dict"))]
     fn end(self) -> Result<PyObject> {
         let d = PyDict::new(self.inner.py);
         d.set_item(self.variant, ser::SerializeTuple::end(self.inner)?)?;
@@ -305,7 +436,7 @@ impl ser::SerializeMap for PythonMapSerializer<'_> {
     where
         T: ?Sized + Serialize,
     {
-        self.key = Some(pythonize(self.dict.py(), key)?);
+        self.key = Some(pythonize(self.py(), key)?);
         Ok(())
     }
 
@@ -313,54 +444,73 @@ impl ser::SerializeMap for PythonMapSerializer<'_> {
     where
         T: ?Sized + Serialize,
     {
-        self.dict.set_item(
-            self.key
-                .take()
-                .expect("serialize_value should always be called after serialize_key"),
-            pythonize(self.dict.py(), value)?,
+        self.set_item(value)?;
+        Ok(())
+    }
+
+    fn end(self) -> Result<PyObject> {
+        let py = self.py();
+        Ok(self.dict.into_py(py))
+    }
+}
+
+impl<'py> ser::SerializeStruct for PythonDictSerializer<'py> {
+    type Ok = PyObject;
+    type Error = PythonizeError;
+
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
+        self.set_item(key, value)?;
+        Ok(())
+    }
+
+    fn end(self) -> Result<PyObject> {
+        let py = self.py();
+        Ok(self.dict.into_py(py))
+    }
+}
+
+impl<'py> ser::SerializeStructVariant for PythonStructVariantSerializer<'py> {
+    type Ok = PyObject;
+    type Error = PythonizeError;
+
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
+        self.inner.dict.set_item(
+            #[cfg(feature = "hashable_dict")]
+            self.inner.py(),
+            key,
+            pythonize(self.inner.py(), value)?,
         )?;
         Ok(())
     }
 
     fn end(self) -> Result<PyObject> {
-        Ok(self.dict.into())
-    }
-}
+        #[cfg(feature = "hashable_dict")]
+        let (mut d, value, py) = {
+            let py = self.inner.py();
+            (Dict::new(), self.inner.dict.into_py(py), py)
+        };
+        #[cfg(not(feature = "hashable_dict"))]
+        let (d, value) = (PyDict::new(self.inner.py()), self.inner.dict);
 
-impl ser::SerializeStruct for PythonDictSerializer<'_> {
-    type Ok = PyObject;
-    type Error = PythonizeError;
+        d.set_item(
+            #[cfg(feature = "hashable_dict")]
+            py,
+            self.variant,
+            value,
+        )?;
 
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
-    {
-        Ok(self.dict.set_item(key, pythonize(self.dict.py(), value)?)?)
-    }
+        #[cfg(feature = "hashable_dict")]
+        let d = d.into_py(py);
+        #[cfg(not(feature = "hashable_dict"))]
+        let d = d.into();
 
-    fn end(self) -> Result<PyObject> {
-        Ok(self.dict.into())
-    }
-}
-
-impl ser::SerializeStructVariant for PythonStructVariantSerializer<'_> {
-    type Ok = PyObject;
-    type Error = PythonizeError;
-
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
-    {
-        self.inner
-            .dict
-            .set_item(key, pythonize(self.inner.dict.py(), value)?)?;
-        Ok(())
-    }
-
-    fn end(self) -> Result<PyObject> {
-        let d = PyDict::new(self.inner.dict.py());
-        d.set_item(self.variant, self.inner.dict)?;
-        Ok(d.into())
+        Ok(d)
     }
 }
 

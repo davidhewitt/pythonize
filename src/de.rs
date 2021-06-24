@@ -1,9 +1,12 @@
-use pyo3::types::*;
+use pyo3::{prelude::*, types::*, PyNativeType};
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 use std::convert::TryInto;
 
+#[cfg(feature = "hashable_dict")]
+use crate::dict::Dict;
 use crate::error::{PythonizeError, Result};
+use crate::{__cfg_if_hashable_dict, __cfg_if_not_hashable_dict};
 
 /// Attempt to convert a Python object to an instance of `T`
 pub fn depythonize<'de, T>(obj: &'de PyAny) -> Result<T>
@@ -16,6 +19,70 @@ where
 
 pub struct Depythonizer<'de> {
     input: &'de PyAny,
+}
+
+__cfg_if_hashable_dict! {
+    fn is_dict(obj: &PyAny) -> PyResult<bool> {
+        Ok(obj.is_instance::<Dict>()? || obj.is_instance::<PyDict>()?)
+    }
+
+    fn downcast_dict(obj: &PyAny) -> PyResult<Dict> {
+        if obj.is_instance::<PyDict>()? {
+            obj.downcast::<PyDict>()?.try_into()
+        } else {
+            obj.extract::<Dict>()
+        }
+    }
+
+    fn deserialize_enum_from_dict<'de, V: de::Visitor<'de>>(
+        visitor: V,
+        obj: &'de PyAny,
+        py: Python<'de>,
+    ) -> Result<V::Value> {
+        let d = downcast_dict(&obj)?;
+        if d.len() != 1 {
+            return Err(PythonizeError::invalid_length_enum());
+        }
+        let variant: &PyString = d
+            .clone()
+            .into_keys(py)
+            .next()
+            .unwrap()
+            .cast_as()
+            .map_err(|_| PythonizeError::dict_key_not_string())?;
+        let value = d.get_item(py, variant)?.unwrap();
+        let mut de = Depythonizer::from_object(value.into_ref(py));
+        visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
+    }
+}
+
+__cfg_if_not_hashable_dict! {
+    fn is_dict(obj: &PyAny) -> PyResult<bool> {
+        obj.is_instance::<PyDict>()
+    }
+
+    fn downcast_dict(obj: &PyAny) -> PyResult<&PyDict> {
+        Ok(obj.downcast()?)
+    }
+
+    fn deserialize_enum_from_dict<'de, V: de::Visitor<'de>>(
+        visitor: V,
+        obj: &'de PyAny,
+        _: Python,
+    ) -> Result<V::Value> {
+        let d = downcast_dict(&obj)?;
+        if d.len() != 1 {
+            return Err(PythonizeError::invalid_length_enum());
+        }
+        let variant: &PyString = d
+            .keys()
+            .get_item(0)
+            .cast_as()
+            .map_err(|_| PythonizeError::dict_key_not_string())?;
+        let value = d.get_item(variant).unwrap();
+        let mut de = Depythonizer::from_object(value);
+        visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
+    }
 }
 
 impl<'de> Depythonizer<'de> {
@@ -36,11 +103,21 @@ impl<'de> Depythonizer<'de> {
         }
     }
 
+    #[cfg(not(feature = "hashable_dict"))]
     fn dict_access(
         &self,
-    ) -> Result<PyDictAccess<'de, impl Iterator<Item = (&'de PyAny, &'de PyAny)>>> {
+    ) -> Result<DictAccess<'de, impl Iterator<Item = (&'de PyAny, &'de PyAny)>>> {
         let dict: &PyDict = self.input.downcast()?;
-        Ok(PyDictAccess::new(dict.iter()))
+        // TODO: figure out why PyDictIterator is not publicly accessible upstream?
+        Ok(DictAccess::new(dict.iter()))
+    }
+
+    #[cfg(feature = "hashable_dict")]
+    fn dict_access(
+        &self,
+    ) -> Result<DictAccess<'de, impl Iterator<Item = (&'de PyAny, &'de PyAny)>>> {
+        let dict = downcast_dict(&self.input)?;
+        Ok(DictAccess::new(dict.into_iter(self.input.py())))
     }
 }
 
@@ -70,7 +147,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_bool(visitor)
         } else if obj.is_instance::<PyByteArray>()? || obj.is_instance::<PyBytes>()? {
             self.deserialize_bytes(visitor)
-        } else if obj.is_instance::<PyDict>()? {
+        } else if is_dict(&obj)? {
             self.deserialize_map(visitor)
         } else if obj.is_instance::<PyFloat>()? {
             self.deserialize_f64(visitor)
@@ -248,20 +325,9 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
         V: de::Visitor<'de>,
     {
         let item = self.input;
-        if item.is_instance::<PyDict>()? {
+        if is_dict(&item)? {
             // Get the enum variant from the dict key
-            let d: &PyDict = item.cast_as().unwrap();
-            if d.len() != 1 {
-                return Err(PythonizeError::invalid_length_enum());
-            }
-            let variant: &PyString = d
-                .keys()
-                .get_item(0)
-                .cast_as()
-                .map_err(|_| PythonizeError::dict_key_not_string())?;
-            let value = d.get_item(variant).unwrap();
-            let mut de = Depythonizer::from_object(value);
-            visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
+            deserialize_enum_from_dict(visitor, &item, self.input.py())
         } else if item.is_instance::<PyString>()? {
             let s: &PyString = self.input.cast_as()?;
             visitor.visit_enum(s.to_str()?.into_deserializer())
@@ -318,15 +384,15 @@ impl<'de> de::SeqAccess<'de> for PySequenceAccess<'de> {
     }
 }
 
-struct PyDictAccess<'de, Iter>
+struct DictAccess<'de, Iter>
 where
     Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
 {
-    iter: Iter, // TODO: figure out why PyDictIterator is not publicly accessible upstream?
+    iter: Iter,
     next_value: Option<&'de PyAny>,
 }
 
-impl<'de, Iter> PyDictAccess<'de, Iter>
+impl<'de, Iter> DictAccess<'de, Iter>
 where
     Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
 {
@@ -338,7 +404,7 @@ where
     }
 }
 
-impl<'de, Iter> de::MapAccess<'de> for PyDictAccess<'de, Iter>
+impl<'de, Iter> de::MapAccess<'de> for DictAccess<'de, Iter>
 where
     Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
 {
@@ -430,6 +496,7 @@ mod test {
     use super::*;
     use crate::error::ErrorImpl;
     use maplit::hashmap;
+    use pyo3::types::Dict;
     use pyo3::Python;
     use serde_json::{json, Value as JsonValue};
 
@@ -439,7 +506,7 @@ mod test {
     {
         let gil = Python::acquire_gil();
         let py = gil.python();
-        let locals = PyDict::new(py);
+        let locals = Dict::new(py);
         py.run(&format!("obj = {}", code), None, Some(locals))
             .unwrap();
         let obj = locals.get_item("obj").unwrap();
@@ -495,7 +562,7 @@ mod test {
 
         let gil = Python::acquire_gil();
         let py = gil.python();
-        let locals = PyDict::new(py);
+        let locals = Dict::new(py);
         py.run(&format!("obj = {}", code), None, Some(locals))
             .unwrap();
         let obj = locals.get_item("obj").unwrap();
@@ -525,7 +592,7 @@ mod test {
 
         let gil = Python::acquire_gil();
         let py = gil.python();
-        let locals = PyDict::new(py);
+        let locals = Dict::new(py);
         py.run(&format!("obj = {}", code), None, Some(locals))
             .unwrap();
         let obj = locals.get_item("obj").unwrap();
