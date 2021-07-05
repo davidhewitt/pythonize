@@ -37,9 +37,29 @@
 //! assert_eq!(new_sample, sample);
 //! ```
 mod de;
+#[cfg(feature = "hashable_dict")]
+pub mod dict;
 mod error;
 mod ser;
 
 pub use crate::de::depythonize;
 pub use crate::error::{PythonizeError, Result};
 pub use crate::ser::pythonize;
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cfg_if_hashable_dict {
+	($($item:item)*) => {$(
+		#[cfg(feature = "hashable_dict")]
+		$item
+	)*};
+}
+
+#[doc(hidden)]
+#[macro_export]
+macro_rules! __cfg_if_not_hashable_dict {
+	($($item:item)*) => {$(
+		#[cfg(not(feature = "hashable_dict"))]
+		$item
+	)*};
+}

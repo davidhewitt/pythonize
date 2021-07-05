@@ -6,7 +6,7 @@ use std::fmt::{self, Debug, Display};
 use std::result;
 
 /// Alias for `std::result::Result` with error type `PythonizeError`
-pub type Result<T> = result::Result<T, PythonizeError>;
+pub type Result<T, E = PythonizeError> = result::Result<T, E>;
 
 /// Errors that can occur when serializing/deserializing Python objects
 pub struct PythonizeError {
