@@ -34,11 +34,8 @@ impl<'de> Depythonizer<'de> {
         }
     }
 
-    fn dict_access(
-        &self,
-    ) -> Result<PyDictAccess<'de, impl Iterator<Item = (&'de PyAny, &'de PyAny)>>> {
-        let dict: &PyDict = self.input.downcast()?;
-        Ok(PyDictAccess::new(dict.iter()))
+    fn dict_access(&self) -> Result<PyMappingAccess<'de>> {
+        PyMappingAccess::new(self.input.downcast()?)
     }
 }
 
@@ -316,43 +313,42 @@ impl<'de> de::SeqAccess<'de> for PySequenceAccess<'de> {
     }
 }
 
-struct PyDictAccess<'de, Iter>
-where
-    Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
-{
-    iter: Iter, // TODO: figure out why PyDictIterator is not publicly accessible upstream?
-    next_value: Option<&'de PyAny>,
+struct PyMappingAccess<'de> {
+    keys: &'de PySequence,
+    values: &'de PySequence,
+    key_idx: usize,
+    val_idx: usize,
+    len: usize,
 }
 
-impl<'de, Iter> PyDictAccess<'de, Iter>
-where
-    Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
-{
-    fn new(iter: Iter) -> Self {
-        Self {
-            iter,
-            next_value: None,
-        }
+impl<'de> PyMappingAccess<'de> {
+    fn new(map: &'de PyMapping) -> Result<Self> {
+        let keys = map.keys()?;
+        let values = map.values()?;
+        let len = map.len()?;
+        Ok(Self {
+            keys,
+            values,
+            key_idx: 0,
+            val_idx: 0,
+            len,
+        })
     }
 }
 
-impl<'de, Iter> de::MapAccess<'de> for PyDictAccess<'de, Iter>
-where
-    Iter: Iterator<Item = (&'de PyAny, &'de PyAny)> + 'de,
-{
+impl<'de> de::MapAccess<'de> for PyMappingAccess<'de> {
     type Error = PythonizeError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
     where
         K: de::DeserializeSeed<'de>,
     {
-        match self.iter.next() {
-            None => Ok(None),
-            Some((key, value)) => {
-                self.next_value = Some(value);
-                seed.deserialize(&mut Depythonizer::from_object(key))
-                    .map(Some)
-            }
+        if self.key_idx < self.len {
+            let mut item_de = Depythonizer::from_object(self.keys.get_item(self.key_idx)?);
+            self.key_idx += 1;
+            seed.deserialize(&mut item_de).map(Some)
+        } else {
+            Ok(None)
         }
     }
 
@@ -360,11 +356,9 @@ where
     where
         V: de::DeserializeSeed<'de>,
     {
-        let value = self
-            .next_value
-            .take()
-            .expect("call next_value_seed after next_key_seed");
-        seed.deserialize(&mut Depythonizer::from_object(value))
+        let mut item_de = Depythonizer::from_object(self.values.get_item(self.val_idx)?);
+        self.val_idx += 1;
+        seed.deserialize(&mut item_de)
     }
 }
 
