@@ -1,7 +1,6 @@
 use pyo3::types::*;
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
-use std::convert::TryInto;
 
 use crate::error::{PythonizeError, Result};
 
@@ -26,12 +25,11 @@ impl<'de> Depythonizer<'de> {
     fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'de>> {
         let seq: &PySequence = self.input.downcast()?;
         let len = seq.len()?;
-        let len_usize: usize = len.try_into().expect("negative sequence length");
 
         match expected_len {
-            Some(expected) if expected != len_usize => Err(
-                PythonizeError::incorrect_sequence_length(expected, len_usize),
-            ),
+            Some(expected) if expected != len => {
+                Err(PythonizeError::incorrect_sequence_length(expected, len))
+            }
             _ => Ok(PySequenceAccess::new(seq, len)),
         }
     }
@@ -256,7 +254,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             }
             let variant: &PyString = d
                 .keys()
-                .get_item(0)
+                .get_item(0)?
                 .cast_as()
                 .map_err(|_| PythonizeError::dict_key_not_string())?;
             let value = d.get_item(variant).unwrap();
@@ -291,12 +289,12 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
 
 struct PySequenceAccess<'a> {
     seq: &'a PySequence,
-    index: isize,
-    len: isize,
+    index: usize,
+    len: usize,
 }
 
 impl<'a> PySequenceAccess<'a> {
-    fn new(seq: &'a PySequence, len: isize) -> Self {
+    fn new(seq: &'a PySequence, len: usize) -> Self {
         Self { seq, index: 0, len }
     }
 }
