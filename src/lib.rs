@@ -42,4 +42,4 @@ mod ser;
 
 pub use crate::de::depythonize;
 pub use crate::error::{PythonizeError, Result};
-pub use crate::ser::pythonize;
+pub use crate::ser::{pythonize, pythonize_custom, AsPyMapping, AsPySequence, PythonizeTypes};
