@@ -85,6 +85,10 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance::<PyUnicode>()? {
             self.deserialize_str(visitor)
+        } else if let Ok(seq) = obj.downcast::<PySequence>() {
+            self.deserialize_tuple(seq.len()?, visitor)
+        } else if obj.downcast::<PyMapping>().is_ok() {
+            self.deserialize_map(visitor)
         } else {
             Err(PythonizeError::unsupported_type(
                 obj.get_type().name().unwrap_or("<unknown>"),
