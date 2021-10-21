@@ -76,21 +76,29 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v2
+      - uses: actions/cache@v2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: coverage-cargo-${{ hashFiles('**/Cargo.toml') }}
+        continue-on-error: true
+      - name: install cargo-llvm-cov
+        run: |
+          wget https://github.com/taiki-e/cargo-llvm-cov/releases/download/v${CARGO_LLVM_COV_VERSION}/cargo-llvm-cov-x86_64-unknown-linux-gnu.tar.gz -qO- | tar -xzvf -
+          mv cargo-llvm-cov ~/.cargo/bin
+        env:
+          CARGO_LLVM_COV_VERSION: 0.1.9
       - uses: actions-rs/toolchain@v1
         with:
           toolchain: nightly
           override: true
           profile: minimal
-      - uses: actions-rs/cargo@v1
+          components: llvm-tools-preview
+      - run: |
+          cargo llvm-cov clean
+          cargo llvm-cov --lcov --output-path coverage.lcov
+      - uses: codecov/codecov-action@v2
         with:
-          command: test
-          args: --no-fail-fast
-        env:
-          CARGO_INCREMENTAL: 0
-          RUSTFLAGS: "-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests"
-          RUSTDOCFLAGS: "-Zprofile -Ccodegen-units=1 -Cinline-threshold=0 -Clink-dead-code -Coverflow-checks=off -Cpanic=abort -Zpanic_abort_tests"
-      - uses: actions-rs/grcov@v0.1
-        id: coverage
-      - uses: codecov/codecov-action@v1
-        with:
-          file: ${{ steps.coverage.outputs.report }}
+          file: coverage.lcov
