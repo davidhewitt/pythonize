@@ -1,5 +1,6 @@
-## Unreleased
+## 0.15.0 - 2021-11-12
 
+- Update to PyO3 0.15
 - Add `pythonize_custom` for customizing the Python types to serialize to.
 - Add support for `depythonize` to handle arbitrary Python sequence and mapping types.
 
