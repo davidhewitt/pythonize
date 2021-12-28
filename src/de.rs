@@ -61,29 +61,29 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
 
         if obj.is_none() {
             self.deserialize_unit(visitor)
-        } else if obj.is_instance::<PyBool>()? {
+        } else if obj.is_instance_of::<PyBool>()? {
             self.deserialize_bool(visitor)
-        } else if obj.is_instance::<PyByteArray>()? || obj.is_instance::<PyBytes>()? {
+        } else if obj.is_instance_of::<PyByteArray>()? || obj.is_instance_of::<PyBytes>()? {
             self.deserialize_bytes(visitor)
-        } else if obj.is_instance::<PyDict>()? {
+        } else if obj.is_instance_of::<PyDict>()? {
             self.deserialize_map(visitor)
-        } else if obj.is_instance::<PyFloat>()? {
+        } else if obj.is_instance_of::<PyFloat>()? {
             self.deserialize_f64(visitor)
-        } else if obj.is_instance::<PyFrozenSet>()? {
+        } else if obj.is_instance_of::<PyFrozenSet>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance::<PyInt>()? {
+        } else if obj.is_instance_of::<PyInt>()? {
             self.deserialize_i64(visitor)
-        } else if obj.is_instance::<PyList>()? {
+        } else if obj.is_instance_of::<PyList>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance::<PyLong>()? {
+        } else if obj.is_instance_of::<PyLong>()? {
             self.deserialize_i64(visitor)
-        } else if obj.is_instance::<PySet>()? {
+        } else if obj.is_instance_of::<PySet>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance::<PyString>()? {
+        } else if obj.is_instance_of::<PyString>()? {
             self.deserialize_str(visitor)
-        } else if obj.is_instance::<PyTuple>()? {
+        } else if obj.is_instance_of::<PyTuple>()? {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance::<PyUnicode>()? {
+        } else if obj.is_instance_of::<PyUnicode>()? {
             self.deserialize_str(visitor)
         } else if let Ok(seq) = obj.downcast::<PySequence>() {
             self.deserialize_tuple(seq.len()?, visitor)
@@ -247,7 +247,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
         V: de::Visitor<'de>,
     {
         let item = self.input;
-        if item.is_instance::<PyDict>()? {
+        if item.is_instance_of::<PyDict>()? {
             // Get the enum variant from the dict key
             let d: &PyDict = item.cast_as().unwrap();
             if d.len() != 1 {
@@ -261,7 +261,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             let value = d.get_item(variant).unwrap();
             let mut de = Depythonizer::from_object(value);
             visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
-        } else if item.is_instance::<PyString>()? {
+        } else if item.is_instance_of::<PyString>()? {
             let s: &PyString = self.input.cast_as()?;
             visitor.visit_enum(s.to_str()?.into_deserializer())
         } else {
