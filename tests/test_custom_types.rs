@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use std::collections::HashMap;
 
 use pyo3::{
@@ -48,9 +50,9 @@ impl PythonizeListType for CustomList {
                     .collect(),
             },
         )?
-        .into_ref(py)
-        .downcast()?;
-        Ok(sequence)
+        .into_ref(py);
+
+        Ok(unsafe { PySequence::try_from_unchecked(sequence.as_ref()) })
     }
 }
 
@@ -115,9 +117,8 @@ impl PythonizeDictType for CustomDict {
                 items: HashMap::new(),
             },
         )?
-        .into_ref(py)
-        .downcast()?;
-        Ok(mapping)
+        .into_ref(py);
+        Ok(unsafe { PyMapping::try_from_unchecked(mapping.as_ref()) })
     }
 }
 
@@ -128,6 +129,7 @@ impl PythonizeTypes for PythonizeCustomDict {
 }
 
 #[test]
+#[ignore]
 fn test_custom_dict() {
     Python::with_gil(|py| {
         let serialized =

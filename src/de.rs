@@ -1,4 +1,5 @@
 use pyo3::types::*;
+use pyo3::{ffi, AsPyPointer, PyErr};
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 
@@ -50,6 +51,15 @@ macro_rules! deserialize_type {
     };
 }
 
+fn seq_len(s: &PySequence) -> pyo3::PyResult<usize> {
+    let v = unsafe { ffi::PySequence_Size(s.as_ptr()) };
+    if v == -1 {
+        Err(PyErr::fetch(s.py()))
+    } else {
+        Ok(v as usize)
+    }
+}
+
 impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     type Error = PythonizeError;
 
@@ -86,7 +96,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
         } else if obj.is_instance_of::<PyUnicode>()? {
             self.deserialize_str(visitor)
         } else if let Ok(seq) = obj.downcast::<PySequence>() {
-            self.deserialize_tuple(seq.len()?, visitor)
+            self.deserialize_tuple(seq_len(seq)?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
         } else {
