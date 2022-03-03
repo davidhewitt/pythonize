@@ -12,13 +12,12 @@ documentation = "https://docs.rs/crate/pythonize/"
 
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["std"] }
-pyo3 = { version = "0.15.0", default-features = false }
+pyo3 = { version = "0.16.0", default-features = false }
 
 [dev-dependencies]
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-pyo3 = { version = "0.15.0", default-features = false, features = ["auto-initialize", "macros"] }
+pyo3 = { version = "0.16.0", default-features = false, features = ["auto-initialize", "macros", "pyproto"] }
 serde_json = "1.0"
 maplit = "1.0.2"
 
-[patch.crates-io]
-pyo3 = { git = "https://github.com/PyO3/pyo3", rev = "8a989eeb6aeb862c0c518d994ef6e5f967f0dc46", version = "^0.15" }
+
