@@ -1,6 +1,6 @@
 [package]
 name = "pythonize"
-version = "0.15.0"
+version = "0.16.0"
 authors = ["David Hewitt <1939362+davidhewitt@users.noreply.github.com>"]
 edition = "2018"
 license = "MIT"
@@ -19,5 +19,3 @@ serde = { version = "1.0", default-features = false, features = ["derive"] }
 pyo3 = { version = "0.16.0", default-features = false, features = ["auto-initialize", "macros", "pyproto"] }
 serde_json = "1.0"
 maplit = "1.0.2"
-
-
