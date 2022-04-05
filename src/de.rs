@@ -1,5 +1,4 @@
 use pyo3::types::*;
-use pyo3::{ffi, AsPyPointer, PyErr};
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 
@@ -25,7 +24,7 @@ impl<'de> Depythonizer<'de> {
 
     fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'de>> {
         let seq: &PySequence = self.input.downcast()?;
-        let len = seq.len()?;
+        let len = self.input.len()?;
 
         match expected_len {
             Some(expected) if expected != len => {
@@ -49,15 +48,6 @@ macro_rules! deserialize_type {
             visitor.$visit(self.input.extract()?)
         }
     };
-}
-
-fn seq_len(s: &PySequence) -> pyo3::PyResult<usize> {
-    let v = unsafe { ffi::PySequence_Size(s.as_ptr()) };
-    if v == -1 {
-        Err(PyErr::fetch(s.py()))
-    } else {
-        Ok(v as usize)
-    }
 }
 
 impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
@@ -95,8 +85,8 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyUnicode>()? {
             self.deserialize_str(visitor)
-        } else if let Ok(seq) = obj.downcast::<PySequence>() {
-            self.deserialize_tuple(seq_len(seq)?, visitor)
+        } else if let Ok(_) = obj.downcast::<PySequence>() {
+            self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
         } else {
