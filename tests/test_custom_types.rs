@@ -1,12 +1,9 @@
-#![allow(deprecated)]
-
 use std::collections::HashMap;
 
 use pyo3::{
     exceptions::{PyIndexError, PyKeyError},
     prelude::*,
     types::{PyDict, PyList, PyMapping, PySequence},
-    PyMappingProtocol, PySequenceProtocol,
 };
 use pythonize::{
     depythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes,
@@ -18,8 +15,8 @@ struct CustomList {
     items: Vec<PyObject>,
 }
 
-#[pyproto]
-impl PySequenceProtocol for CustomList {
+#[pymethods]
+impl CustomList {
     fn __len__(&self) -> usize {
         self.items.len()
     }
@@ -75,13 +72,13 @@ fn test_custom_list() {
     })
 }
 
-#[pyclass]
+#[pyclass(mapping)]
 struct CustomDict {
     items: HashMap<String, PyObject>,
 }
 
-#[pyproto]
-impl PyMappingProtocol for CustomDict {
+#[pymethods]
+impl CustomDict {
     fn __len__(&self) -> usize {
         self.items.len()
     }
@@ -96,10 +93,7 @@ impl PyMappingProtocol for CustomDict {
     fn __setitem__(&mut self, key: String, value: PyObject) {
         self.items.insert(key, value);
     }
-}
 
-#[pymethods]
-impl CustomDict {
     fn keys(&self) -> Vec<&String> {
         self.items.keys().collect()
     }
@@ -129,7 +123,6 @@ impl PythonizeTypes for PythonizeCustomDict {
 }
 
 #[test]
-#[ignore]
 fn test_custom_dict() {
     Python::with_gil(|py| {
         let serialized =
