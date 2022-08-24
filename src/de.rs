@@ -433,16 +433,16 @@ mod test {
     where
         T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
     {
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let locals = PyDict::new(py);
-        py.run(&format!("obj = {}", code), None, Some(locals))
-            .unwrap();
-        let obj = locals.get_item("obj").unwrap();
-        let actual: T = depythonize(obj).unwrap();
-        assert_eq!(&actual, expected);
-        let actual_json: JsonValue = depythonize(obj).unwrap();
-        assert_eq!(&actual_json, expected_json);
+        Python::with_gil(|py| {
+            let locals = PyDict::new(py);
+            py.run(&format!("obj = {}", code), None, Some(locals))
+                .unwrap();
+            let obj = locals.get_item("obj").unwrap();
+            let actual: T = depythonize(obj).unwrap();
+            assert_eq!(&actual, expected);
+            let actual_json: JsonValue = depythonize(obj).unwrap();
+            assert_eq!(&actual_json, expected_json);
+        });
     }
 
     #[test]
@@ -489,16 +489,16 @@ mod test {
 
         let code = "{'foo': 'Foo'}";
 
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let locals = PyDict::new(py);
-        py.run(&format!("obj = {}", code), None, Some(locals))
-            .unwrap();
-        let obj = locals.get_item("obj").unwrap();
-        assert!(matches!(
-            *depythonize::<Struct>(obj).unwrap_err().inner,
-            ErrorImpl::Message(msg) if msg == "missing field `bar`"
-        ));
+        Python::with_gil(|py| {
+            let locals = PyDict::new(py);
+            py.run(&format!("obj = {}", code), None, Some(locals))
+                .unwrap();
+            let obj = locals.get_item("obj").unwrap();
+            assert!(matches!(
+                *depythonize::<Struct>(obj).unwrap_err().inner,
+                ErrorImpl::Message(msg) if msg == "missing field `bar`"
+            ));
+        })
     }
 
     #[test]
@@ -519,16 +519,16 @@ mod test {
 
         let code = "('cat', -10.05, 'foo')";
 
-        let gil = Python::acquire_gil();
-        let py = gil.python();
-        let locals = PyDict::new(py);
-        py.run(&format!("obj = {}", code), None, Some(locals))
-            .unwrap();
-        let obj = locals.get_item("obj").unwrap();
-        assert!(matches!(
-            *depythonize::<TupleStruct>(obj).unwrap_err().inner,
-            ErrorImpl::IncorrectSequenceLength { expected, got } if expected == 2 && got == 3
-        ));
+        Python::with_gil(|py| {
+            let locals = PyDict::new(py);
+            py.run(&format!("obj = {}", code), None, Some(locals))
+                .unwrap();
+            let obj = locals.get_item("obj").unwrap();
+            assert!(matches!(
+                *depythonize::<TupleStruct>(obj).unwrap_err().inner,
+                ErrorImpl::IncorrectSequenceLength { expected, got } if expected == 2 && got == 3
+            ));
+        })
     }
 
     #[test]

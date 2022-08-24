@@ -10,7 +10,7 @@ use pythonize::{
 };
 use serde_json::{json, Value};
 
-#[pyclass]
+#[pyclass(sequence)]
 struct CustomList {
     items: Vec<PyObject>,
 }
@@ -62,6 +62,7 @@ impl PythonizeTypes for PythonizeCustomList {
 #[test]
 fn test_custom_list() {
     Python::with_gil(|py| {
+        PySequence::register::<CustomList>(py).unwrap();
         let serialized = pythonize_custom::<PythonizeCustomList, _>(py, &json!([1, 2, 3]))
             .unwrap()
             .into_ref(py);
@@ -125,6 +126,7 @@ impl PythonizeTypes for PythonizeCustomDict {
 #[test]
 fn test_custom_dict() {
     Python::with_gil(|py| {
+        PyMapping::register::<CustomDict>(py).unwrap();
         let serialized =
             pythonize_custom::<PythonizeCustomDict, _>(py, &json!({ "hello": 1, "world": 2 }))
                 .unwrap()
