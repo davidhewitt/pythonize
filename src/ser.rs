@@ -63,7 +63,7 @@ pub fn pythonize<T>(py: Python, value: &T) -> Result<PyObject>
 where
     T: ?Sized + Serialize,
 {
-    pythonize_custom::<PythonizeDefault, _>(py, value)
+    value.serialize(Pythonizer::new(py))
 }
 
 /// Attempt to convert the given data into a Python object.
@@ -73,16 +73,35 @@ where
     T: ?Sized + Serialize,
     P: PythonizeTypes,
 {
-    value.serialize(Pythonizer::<P> {
-        py,
-        _types: PhantomData,
-    })
+    value.serialize(Pythonizer::custom::<P>(py))
 }
 
+/// A structure that serializes Rust values into Python objects
 #[derive(Clone, Copy)]
 pub struct Pythonizer<'py, P> {
     py: Python<'py>,
     _types: PhantomData<P>,
+}
+
+impl<'py, P> From<Python<'py>> for Pythonizer<'py, P> {
+    fn from(py: Python<'py>) -> Self {
+        Self {
+            py,
+            _types: PhantomData,
+        }
+    }
+}
+
+impl<'py> Pythonizer<'py, PythonizeDefault> {
+    /// Creates a serializer to convert data into a Python object using the default mapping class
+    pub fn new(py: Python<'py>) -> Self {
+        Self::from(py)
+    }
+
+    /// Creates a serializer to convert data into a Python object using a custom mapping class
+    pub fn custom<P>(py: Python<'py>) -> Pythonizer<'py, P> {
+        Pythonizer::from(py)
+    }
 }
 
 #[doc(hidden)]
