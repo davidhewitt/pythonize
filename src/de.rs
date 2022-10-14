@@ -13,11 +13,13 @@ where
     T::deserialize(&mut depythonizer)
 }
 
+/// A structure that deserializes Python objects into Rust values
 pub struct Depythonizer<'de> {
     input: &'de PyAny,
 }
 
 impl<'de> Depythonizer<'de> {
+    /// Create a deserializer from a Python object
     pub fn from_object(input: &'de PyAny) -> Self {
         Depythonizer { input }
     }
