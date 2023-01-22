@@ -1,3 +1,8 @@
+## 0.18.0 - 2022-08-24
+
+- Add LICENSE file to the crate
+- Update to PyO3 0.18
+
 ## 0.17.0 - 2022-08-24
 
 - Update to PyO3 0.17

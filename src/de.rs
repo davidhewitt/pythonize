@@ -107,7 +107,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let s = self.input.cast_as::<PyString>()?.to_str()?;
+        let s = self.input.downcast::<PyString>()?.to_str()?;
         if s.len() != 1 {
             return Err(PythonizeError::invalid_length_char());
         }
@@ -129,7 +129,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let s: &PyString = self.input.cast_as()?;
+        let s: &PyString = self.input.downcast()?;
         visitor.visit_str(s.to_str()?)
     }
 
@@ -145,7 +145,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
         V: de::Visitor<'de>,
     {
         let obj = self.input;
-        let b: &PyBytes = obj.cast_as()?;
+        let b: &PyBytes = obj.downcast()?;
         visitor.visit_bytes(b.as_bytes())
     }
 
@@ -249,20 +249,20 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
         let item = self.input;
         if item.is_instance_of::<PyDict>()? {
             // Get the enum variant from the dict key
-            let d: &PyDict = item.cast_as().unwrap();
+            let d: &PyDict = item.downcast().unwrap();
             if d.len() != 1 {
                 return Err(PythonizeError::invalid_length_enum());
             }
             let variant: &PyString = d
                 .keys()
                 .get_item(0)?
-                .cast_as()
+                .downcast()
                 .map_err(|_| PythonizeError::dict_key_not_string())?;
             let value = d.get_item(variant).unwrap();
             let mut de = Depythonizer::from_object(value);
             visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
         } else if item.is_instance_of::<PyString>()? {
-            let s: &PyString = self.input.cast_as()?;
+            let s: &PyString = self.input.downcast()?;
             visitor.visit_enum(s.to_str()?.into_deserializer())
         } else {
             Err(PythonizeError::invalid_enum_type())
@@ -275,7 +275,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     {
         let s: &PyString = self
             .input
-            .cast_as()
+            .downcast()
             .map_err(|_| PythonizeError::dict_key_not_string())?;
         visitor.visit_str(s.to_str()?)
     }
