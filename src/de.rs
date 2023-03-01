@@ -76,8 +76,6 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_unit(visitor)
         } else if obj.is_instance_of::<PyBool>()? {
             self.deserialize_bool(visitor)
-        } else if obj.is_instance_of::<PyByteArray>()? || obj.is_instance_of::<PyBytes>()? {
-            self.deserialize_bytes(visitor)
         } else if obj.is_instance_of::<PyDict>()? {
             self.deserialize_map(visitor)
         } else if obj.is_instance_of::<PyFloat>()? {
