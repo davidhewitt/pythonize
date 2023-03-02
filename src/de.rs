@@ -80,16 +80,12 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_map(visitor)
         } else if obj.is_instance_of::<PyFloat>()? {
             self.deserialize_f64(visitor)
-        } else if obj.is_instance_of::<PyFrozenSet>()? {
-            self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyInt>()? {
             self.deserialize_i64(visitor)
         } else if obj.is_instance_of::<PyList>()? {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyLong>()? {
             self.deserialize_i64(visitor)
-        } else if obj.is_instance_of::<PySet>()? {
-            self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyString>()? {
             self.deserialize_str(visitor)
         } else if obj.is_instance_of::<PyTuple>()? {
