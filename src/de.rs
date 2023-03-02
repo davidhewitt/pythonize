@@ -1,3 +1,4 @@
+use pyo3::intern;
 use pyo3::types::*;
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
@@ -372,8 +373,18 @@ impl<'de> de::MapAccess<'de> for PyMappingAccess<'de> {
         K: de::DeserializeSeed<'de>,
     {
         if self.key_idx < self.len {
-            let mut item_de =
-                Depythonizer::from_object(self.keys.get_item(self.key_idx)?, self.on_error);
+            let key = self.keys.get_item(self.key_idx)?;
+            let py = key.py();
+            let key = match key {
+                key if key.is_instance_of::<PyUnicode>()? => key,
+                key if key.is_none() => intern!(py, "null"),
+                key if key.is_instance_of::<PyBool>()? => match key.is_true()? {
+                    true => intern!(py, "true"),
+                    false => intern!(py, "false"),
+                },
+                key => key.str()?,
+            };
+            let mut item_de = Depythonizer::from_object(key, self.on_error);
             self.key_idx += 1;
             seed.deserialize(&mut item_de).map(Some)
         } else {
