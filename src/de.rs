@@ -559,6 +559,22 @@ mod test {
     }
 
     #[test]
+    fn test_tuple_from_pyset() {
+        let expected = ("foo".to_string(), 5);
+        let expected_json = json!(["foo", 5]);
+        let code = "{'foo', 5}";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_tuple_from_pyfrozenset() {
+        let expected = ("foo".to_string(), 5);
+        let expected_json = json!(["foo", 5]);
+        let code = "frozenset({'foo', 5})";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
     fn test_vec() {
         let expected = vec![3, 2, 1];
         let expected_json = json!([3, 2, 1]);
