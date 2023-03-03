@@ -23,7 +23,7 @@ impl<'de> Depythonizer<'de> {
     }
 
     fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'de>> {
-        let seq: &PySequence = self.input.downcast()?;
+        let seq: &PyIterator = self.input.iter()?;
         let len = self.input.len()?;
 
         match expected_len {
@@ -289,13 +289,13 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
 }
 
 struct PySequenceAccess<'a> {
-    seq: &'a PySequence,
+    seq: &'a PyIterator,
     index: usize,
     len: usize,
 }
 
 impl<'a> PySequenceAccess<'a> {
-    fn new(seq: &'a PySequence, len: usize) -> Self {
+    fn new(seq: &'a PyIterator, len: usize) -> Self {
         Self { seq, index: 0, len }
     }
 }
@@ -308,7 +308,11 @@ impl<'de> de::SeqAccess<'de> for PySequenceAccess<'de> {
         T: de::DeserializeSeed<'de>,
     {
         if self.index < self.len {
-            let mut item_de = Depythonizer::from_object(self.seq.get_item(self.index)?);
+            let item = match self.seq.next() {
+                Some(item) => item?,
+                None => return Ok(None),
+            };
+            let mut item_de = Depythonizer::from_object(item);
             self.index += 1;
             seed.deserialize(&mut item_de).map(Some)
         } else {
