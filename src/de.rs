@@ -129,7 +129,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     where
         V: de::Visitor<'de>,
     {
-        let s: &PyString = self.input.downcast()?;
+        let s: &PyString = self.input.str()?;
         visitor.visit_str(s.to_str()?)
     }
 
@@ -428,15 +428,38 @@ mod test {
     use maplit::hashmap;
     use pyo3::Python;
     use serde_json::{json, Value as JsonValue};
+    use uuid::Uuid;
 
     fn test_de<T>(code: &str, expected: &T, expected_json: &JsonValue)
     where
         T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
     {
+        test_de_with_imports(code, expected, expected_json, &[]);
+    }
+
+    fn test_de_with_imports<T>(
+        code: &str,
+        expected: &T,
+        expected_json: &JsonValue,
+        imports: &[&str],
+    ) where
+        T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
+    {
+        let imports: Vec<_> = imports
+            .iter()
+            .map(|module| format!("import {}", module))
+            .collect();
+
+        let import_statements = imports.join("\n");
         Python::with_gil(|py| {
             let locals = PyDict::new(py);
-            py.run(&format!("obj = {}", code), None, Some(locals))
-                .unwrap();
+            py.run(
+                &format!("{}\nobj = {}", import_statements, code),
+                None,
+                Some(locals),
+            )
+            .unwrap();
+
             let obj = locals.get_item("obj").unwrap();
             let actual: T = depythonize(obj).unwrap();
             assert_eq!(&actual, expected);
@@ -712,5 +735,13 @@ mod test {
             json!({"name": "SomeFoo", "bar": { "value": 13, "variant": { "Tuple": [-1.5, 8]}}});
         let code = "{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}";
         test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_uuid() {
+        let expected = Uuid::new_v4();
+        let expected_json = json!(expected.to_string().replace("-", ""));
+        let code = format!("uuid.UUID('{}')", expected.to_string());
+        test_de_with_imports(&code, &expected, &expected_json, &["uuid"]);
     }
 }
