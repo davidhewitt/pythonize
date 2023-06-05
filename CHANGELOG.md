@@ -1,3 +1,7 @@
+## Unreleased
+
+- Update to PyO3 0.19
+
 ## 0.18.0 - 2022-08-24
 
 - Add LICENSE file to the crate
