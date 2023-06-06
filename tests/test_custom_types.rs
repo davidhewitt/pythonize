@@ -66,7 +66,7 @@ fn test_custom_list() {
         let serialized = pythonize_custom::<PythonizeCustomList, _>(py, &json!([1, 2, 3]))
             .unwrap()
             .into_ref(py);
-        assert!(serialized.is_instance_of::<CustomList>().unwrap());
+        assert!(serialized.is_instance_of::<CustomList>());
 
         let deserialized: Value = depythonize(serialized).unwrap();
         assert_eq!(deserialized, json!([1, 2, 3]));
@@ -131,7 +131,7 @@ fn test_custom_dict() {
             pythonize_custom::<PythonizeCustomDict, _>(py, &json!({ "hello": 1, "world": 2 }))
                 .unwrap()
                 .into_ref(py);
-        assert!(serialized.is_instance_of::<CustomDict>().unwrap());
+        assert!(serialized.is_instance_of::<CustomDict>());
 
         let deserialized: Value = depythonize(serialized).unwrap();
         assert_eq!(deserialized, json!({ "hello": 1, "world": 2 }));

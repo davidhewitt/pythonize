@@ -18,23 +18,23 @@
 //!     bar: Option<usize>
 //! }
 //!
-//! let gil = Python::acquire_gil();
-//! let py = gil.python();
+//! Python::with_gil(|py| {
+//!     let sample = Sample {
+//!         foo: "Foo".to_string(),
+//!         bar: None
+//!     };
 //!
-//! let sample = Sample {
-//!     foo: "Foo".to_string(),
-//!     bar: None
-//! };
+//!     // Rust -> Python
+//!     let obj = pythonize(py, &sample).unwrap();
 //!
-//! // Rust -> Python
-//! let obj = pythonize(py, &sample).unwrap();
+//!     assert_eq!("{'foo': 'Foo', 'bar': None}", &format!("{}", obj.as_ref(py).repr().unwrap()));
 //!
-//! assert_eq!("{'foo': 'Foo', 'bar': None}", &format!("{}", obj.as_ref(py).repr().unwrap()));
+//!     // Python -> Rust
+//!     let new_sample: Sample = depythonize(obj.as_ref(py)).unwrap();
 //!
-//! // Python -> Rust
-//! let new_sample: Sample = depythonize(obj.as_ref(py)).unwrap();
+//!     assert_eq!(new_sample, sample);
+//! });
 //!
-//! assert_eq!(new_sample, sample);
 //! ```
 mod de;
 mod error;
