@@ -474,7 +474,7 @@ mod test {
                 None,
                 Some(locals),
             )?;
-            let result = locals.get_item("result").unwrap().extract::<&str>()?;
+            let result = locals.get_item("result")?.unwrap().extract::<&str>()?;
 
             assert_eq!(result, expected);
             assert_eq!(serde_json::to_string(&src).unwrap(), expected);

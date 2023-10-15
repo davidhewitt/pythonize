@@ -85,7 +85,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyUnicode>() {
             self.deserialize_str(visitor)
-        } else if let Ok(_) = obj.downcast::<PySequence>() {
+        } else if obj.downcast::<PySequence>().is_ok() {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
@@ -258,7 +258,7 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
                 .get_item(0)?
                 .downcast()
                 .map_err(|_| PythonizeError::dict_key_not_string())?;
-            let value = d.get_item(variant).unwrap();
+            let value = d.get_item(variant)?.unwrap();
             let mut de = Depythonizer::from_object(value);
             visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
         } else if item.is_instance_of::<PyString>() {
@@ -437,7 +437,7 @@ mod test {
             let locals = PyDict::new(py);
             py.run(&format!("obj = {}", code), None, Some(locals))
                 .unwrap();
-            let obj = locals.get_item("obj").unwrap();
+            let obj = locals.get_item("obj").unwrap().unwrap();
             let actual: T = depythonize(obj).unwrap();
             assert_eq!(&actual, expected);
             let actual_json: JsonValue = depythonize(obj).unwrap();
@@ -493,7 +493,7 @@ mod test {
             let locals = PyDict::new(py);
             py.run(&format!("obj = {}", code), None, Some(locals))
                 .unwrap();
-            let obj = locals.get_item("obj").unwrap();
+            let obj = locals.get_item("obj").unwrap().unwrap();
             assert!(matches!(
                 *depythonize::<Struct>(obj).unwrap_err().inner,
                 ErrorImpl::Message(msg) if msg == "missing field `bar`"
@@ -523,7 +523,7 @@ mod test {
             let locals = PyDict::new(py);
             py.run(&format!("obj = {}", code), None, Some(locals))
                 .unwrap();
-            let obj = locals.get_item("obj").unwrap();
+            let obj = locals.get_item("obj").unwrap().unwrap();
             assert!(matches!(
                 *depythonize::<TupleStruct>(obj).unwrap_err().inner,
                 ErrorImpl::IncorrectSequenceLength { expected, got } if expected == 2 && got == 3
