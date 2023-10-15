@@ -84,6 +84,6 @@ jobs:
       - run: |
           cargo llvm-cov clean
           cargo llvm-cov --codecov --output-path codecov.json
-      - uses: codecov/codecov-action@v2
+      - uses: codecov/codecov-action@v3
         with:
           file: codecov.json
