@@ -1,4 +1,4 @@
-## Unreleased
+## 0.20.0 - 2023-10-15
 
 - Update to PyO3 0.20
 
