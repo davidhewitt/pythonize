@@ -2,7 +2,8 @@
 name = "pythonize"
 version = "0.20.0"
 authors = ["David Hewitt <1939362+davidhewitt@users.noreply.github.com>"]
-edition = "2018"
+edition = "2021"
+rust-version = "1.56"
 license = "MIT"
 description = "Serde Serializer & Deserializer from Rust <--> Python, backed by PyO3."
 homepage = "https://github.com/davidhewitt/pythonize"

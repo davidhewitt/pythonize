@@ -31,17 +31,22 @@ jobs:
 
   build:
     needs: [fmt] # don't wait for clippy as fails rarely and takes longer
-    name: python${{ matrix.python-version }} ${{ matrix.platform.os }}
-    runs-on: ${{ matrix.platform.os }}
+    name: python${{ matrix.python-version }} ${{ matrix.os }} rust-${{ matrix.rust}}
+    runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false  # If one platform fails, allow the rest to keep testing.
       matrix:
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
-        platform: [
-          { os: "macOS-latest", rust-target: "x86_64-apple-darwin" },
-          { os: "ubuntu-latest", rust-target: "x86_64-unknown-linux-gnu" },
-          { os: "windows-latest", rust-target: "x86_64-pc-windows-msvc" },
+        os: [
+          "macos-latest",
+          "ubuntu-latest",
+          "windows-latest",
         ]
+        rust: [stable]
+        include:
+          - python-version: "3.12"
+            os: "ubuntu-latest"
+            rust: "1.56"
 
     steps:
       - uses: actions/checkout@v4
@@ -53,12 +58,15 @@ jobs:
           architecture: x64
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@master
         with:
-          target: ${{ matrix.platform.rust-target }}
+          toolchain: ${{ matrix.rust }}
 
-      - name: Build without default features
-        run: cargo test --no-default-features --verbose --target ${{ matrix.platform.rust-target }}
+      - uses: Swatinem/rust-cache@v2
+        continue-on-error: true
+
+      - name: Test
+        run: cargo test --verbose
 
     env:
       RUST_BACKTRACE: 1
@@ -68,13 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: coverage-cargo-${{ hashFiles('**/Cargo.toml') }}
+      - uses: Swatinem/rust-cache@v2
         continue-on-error: true
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov

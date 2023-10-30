@@ -1,3 +1,8 @@
+## Unreleased
+
+- Bump edition to 2021
+- Bump MSRV to 1.56
+
 ## 0.20.0 - 2023-10-15
 
 - Update to PyO3 0.20
