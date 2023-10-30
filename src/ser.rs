@@ -457,7 +457,7 @@ mod test {
     use maplit::hashmap;
     use pyo3::types::PyDict;
     use pyo3::{PyResult, Python};
-    use serde::{Deserialize, Serialize};
+    use serde::Serialize;
 
     fn test_ser<T>(src: T, expected: &str)
     where
@@ -486,7 +486,7 @@ mod test {
 
     #[test]
     fn test_empty_struct() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         struct Empty;
 
         test_ser(Empty, "null");
@@ -494,7 +494,7 @@ mod test {
 
     #[test]
     fn test_struct() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         struct Struct {
             foo: String,
             bar: usize,
@@ -511,7 +511,7 @@ mod test {
 
     #[test]
     fn test_tuple_struct() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         struct TupleStruct(String, usize);
 
         test_ser(TupleStruct("foo".to_string(), 5), r#"["foo",5]"#);
@@ -534,7 +534,7 @@ mod test {
 
     #[test]
     fn test_enum_unit_variant() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         enum E {
             Empty,
         }
@@ -544,7 +544,7 @@ mod test {
 
     #[test]
     fn test_enum_tuple_variant() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         enum E {
             Tuple(i32, String),
         }
@@ -554,7 +554,7 @@ mod test {
 
     #[test]
     fn test_enum_newtype_variant() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         enum E {
             NewType(String),
         }
@@ -564,7 +564,7 @@ mod test {
 
     #[test]
     fn test_enum_struct_variant() {
-        #[derive(Serialize, Deserialize)]
+        #[derive(Serialize)]
         enum E {
             Struct { foo: String, bar: usize },
         }
@@ -576,5 +576,54 @@ mod test {
             },
             r#"{"Struct":{"foo":"foo","bar":5}}"#,
         );
+    }
+
+    #[test]
+    fn test_integers() {
+        #[derive(Serialize)]
+        struct Integers {
+            a: i8,
+            b: i16,
+            c: i32,
+            d: i64,
+            e: u8,
+            f: u16,
+            g: u32,
+            h: u64,
+        }
+
+        test_ser(
+            Integers {
+                a: 1,
+                b: 2,
+                c: 3,
+                d: 4,
+                e: 5,
+                f: 6,
+                g: 7,
+                h: 8,
+            },
+            r#"{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8}"#,
+        )
+    }
+
+    #[test]
+    fn test_bool() {
+        test_ser(true, "true");
+        test_ser(false, "false");
+    }
+
+    #[test]
+    fn test_none() {
+        #[derive(Serialize)]
+        struct S;
+
+        test_ser((), "null");
+        test_ser(S, "null");
+    }
+
+    #[test]
+    fn test_bytes() {
+        test_ser(b"foo", "[102,111,111]");
     }
 }

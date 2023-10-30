@@ -75,16 +75,12 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
             self.deserialize_i64(visitor)
         } else if obj.is_instance_of::<PyList>() {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance_of::<PyLong>() {
-            self.deserialize_i64(visitor)
         } else if obj.is_instance_of::<PySet>() {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyString>() {
             self.deserialize_str(visitor)
         } else if obj.is_instance_of::<PyTuple>() {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance_of::<PyUnicode>() {
-            self.deserialize_str(visitor)
         } else if obj.downcast::<PySequence>().is_ok() {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
@@ -463,19 +459,22 @@ mod test {
             foo: String,
             bar: usize,
             baz: f32,
+            qux: bool,
         }
 
         let expected = Struct {
             foo: "Foo".to_string(),
             bar: 8usize,
             baz: 45.23,
+            qux: true,
         };
         let expected_json = json!({
             "foo": "Foo",
             "bar": 8,
-            "baz": 45.23
+            "baz": 45.23,
+            "qux": true
         });
-        let code = "{'foo': 'Foo', 'bar': 8, 'baz': 45.23}";
+        let code = "{'foo': 'Foo', 'bar': 8, 'baz': 45.23, 'qux': True}";
         test_de(code, &expected, &expected_json);
     }
 
