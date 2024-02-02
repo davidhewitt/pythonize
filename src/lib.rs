@@ -40,8 +40,8 @@ mod de;
 mod error;
 mod ser;
 
-pub use crate::de::depythonize;
+pub use crate::de::{depythonize, Depythonizer};
 pub use crate::error::{PythonizeError, Result};
 pub use crate::ser::{
-    pythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes,
+    pythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes, Pythonizer,
 };
