@@ -61,29 +61,31 @@ impl<'a, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'de> {
     {
         let obj = self.input;
 
+        // First check for cases which are cheap to check due to pointer
+        // comparison or bitflag checks
         if obj.is_none() {
             self.deserialize_unit(visitor)
         } else if obj.is_instance_of::<PyBool>() {
             self.deserialize_bool(visitor)
-        } else if obj.is_instance_of::<PyByteArray>() || obj.is_instance_of::<PyBytes>() {
-            self.deserialize_bytes(visitor)
-        } else if obj.is_instance_of::<PyDict>() {
-            self.deserialize_map(visitor)
-        } else if obj.is_instance_of::<PyFloat>() {
-            self.deserialize_f64(visitor)
-        } else if obj.is_instance_of::<PyFrozenSet>() {
-            self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyInt>() {
             self.deserialize_i64(visitor)
-        } else if obj.is_instance_of::<PyList>() {
+        } else if obj.is_instance_of::<PyList>() || obj.is_instance_of::<PyTuple>() {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.is_instance_of::<PySet>() {
-            self.deserialize_tuple(obj.len()?, visitor)
+        } else if obj.is_instance_of::<PyDict>() {
+            self.deserialize_map(visitor)
         } else if obj.is_instance_of::<PyString>() {
             self.deserialize_str(visitor)
-        } else if obj.is_instance_of::<PyTuple>() {
-            self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.downcast::<PySequence>().is_ok() {
+        }
+        // Continue with cases which are slower to check because they go
+        // throuh `isinstance` machinery
+        else if obj.is_instance_of::<PyBytes>() || obj.is_instance_of::<PyByteArray>() {
+            self.deserialize_bytes(visitor)
+        } else if obj.is_instance_of::<PyFloat>() {
+            self.deserialize_f64(visitor)
+        } else if obj.is_instance_of::<PyFrozenSet>()
+            || obj.is_instance_of::<PySet>()
+            || obj.downcast::<PySequence>().is_ok()
+        {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
