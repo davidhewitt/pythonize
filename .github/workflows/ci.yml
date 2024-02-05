@@ -86,7 +86,7 @@ jobs:
       - run: |
           cargo llvm-cov clean
           cargo llvm-cov --codecov --output-path codecov.json
-      - uses: codecov/codecov-action@v3
+      - uses: codecov/codecov-action@v4
         with:
           file: codecov.json
           token: ${{ secrets.CODECOV_TOKEN }}
