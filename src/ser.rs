@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
-use pyo3::types::{PyDict, PyList, PyMapping, PySequence, PyTuple};
-use pyo3::{IntoPy, PyObject, PyResult, Python, ToPyObject};
+use pyo3::types::{PyAnyMethods, PyDict, PyList, PyMapping, PySequence, PyTuple};
+use pyo3::{Bound, IntoPy, PyObject, PyResult, Python, ToPyObject};
 use serde::{ser, Serialize};
 
 use crate::error::{PythonizeError, Result};
@@ -9,7 +9,7 @@ use crate::error::{PythonizeError, Result};
 /// Trait for types which can represent a Python mapping
 pub trait PythonizeDictType {
     /// Constructor
-    fn create_mapping(py: Python) -> PyResult<&PyMapping>;
+    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>>;
 }
 
 /// Trait for types which can represent a Python sequence
@@ -18,7 +18,7 @@ pub trait PythonizeListType: Sized {
     fn create_sequence<T, U>(
         py: Python,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
-    ) -> PyResult<&PySequence>
+    ) -> PyResult<Bound<PySequence>>
     where
         T: ToPyObject,
         U: ExactSizeIterator<Item = T>;
@@ -33,8 +33,8 @@ pub trait PythonizeTypes {
 }
 
 impl PythonizeDictType for PyDict {
-    fn create_mapping(py: Python) -> PyResult<&PyMapping> {
-        Ok(PyDict::new(py).as_mapping())
+    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>> {
+        Ok(PyDict::new_bound(py).into_any().downcast_into().unwrap())
     }
 }
 
@@ -42,12 +42,15 @@ impl PythonizeListType for PyList {
     fn create_sequence<T, U>(
         py: Python,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
-    ) -> PyResult<&PySequence>
+    ) -> PyResult<Bound<PySequence>>
     where
         T: ToPyObject,
         U: ExactSizeIterator<Item = T>,
     {
-        Ok(PyList::new(py, elements).as_sequence())
+        Ok(PyList::new_bound(py, elements)
+            .into_any()
+            .downcast_into()
+            .unwrap())
     }
 }
 
@@ -126,14 +129,14 @@ pub struct PythonStructVariantSerializer<'py, P: PythonizeTypes> {
 #[doc(hidden)]
 pub struct PythonDictSerializer<'py, P: PythonizeTypes> {
     py: Python<'py>,
-    dict: &'py PyMapping,
+    dict: Bound<'py, PyMapping>,
     _types: PhantomData<P>,
 }
 
 #[doc(hidden)]
 pub struct PythonMapSerializer<'py, P: PythonizeTypes> {
     py: Python<'py>,
-    map: &'py PyMapping,
+    map: Bound<'py, PyMapping>,
     key: Option<PyObject>,
     _types: PhantomData<P>,
 }
@@ -250,7 +253,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        let d = PyDict::new(self.py);
+        let d = PyDict::new_bound(self.py);
         d.set_item(variant, value.serialize(self)?)?;
         Ok(d.into())
     }
@@ -363,7 +366,7 @@ impl<'py, P: PythonizeTypes> ser::SerializeTuple for PythonCollectionSerializer<
     }
 
     fn end(self) -> Result<PyObject> {
-        Ok(PyTuple::new(self.py, self.items).into())
+        Ok(PyTuple::new_bound(self.py, self.items).into())
     }
 }
 
@@ -395,7 +398,7 @@ impl<'py, P: PythonizeTypes> ser::SerializeTupleVariant for PythonTupleVariantSe
     }
 
     fn end(self) -> Result<PyObject> {
-        let d = PyDict::new(self.inner.py);
+        let d = PyDict::new_bound(self.inner.py);
         d.set_item(self.variant, ser::SerializeTuple::end(self.inner)?)?;
         Ok(d.into())
     }
@@ -464,7 +467,7 @@ impl<'py, P: PythonizeTypes> ser::SerializeStructVariant for PythonStructVariant
     }
 
     fn end(self) -> Result<PyObject> {
-        let d = PyDict::new(self.inner.py);
+        let d = PyDict::new_bound(self.inner.py);
         d.set_item(self.variant, self.inner.dict)?;
         Ok(d.into())
     }
@@ -474,8 +477,8 @@ impl<'py, P: PythonizeTypes> ser::SerializeStructVariant for PythonStructVariant
 mod test {
     use super::pythonize;
     use maplit::hashmap;
+    use pyo3::prelude::*;
     use pyo3::types::PyDict;
-    use pyo3::{PyResult, Python};
     use serde::Serialize;
 
     fn test_ser<T>(src: T, expected: &str)
@@ -485,15 +488,16 @@ mod test {
         Python::with_gil(|py| -> PyResult<()> {
             let obj = pythonize(py, &src)?;
 
-            let locals = PyDict::new(py);
+            let locals = PyDict::new_bound(py);
             locals.set_item("obj", obj)?;
 
-            py.run(
+            py.run_bound(
                 "import json; result = json.dumps(obj, separators=(',', ':'))",
                 None,
-                Some(locals),
+                Some(&locals),
             )?;
-            let result = locals.get_item("result")?.unwrap().extract::<&str>()?;
+            let result = locals.get_item("result")?.unwrap();
+            let result = result.extract::<&str>()?;
 
             assert_eq!(result, expected);
             assert_eq!(serde_json::to_string(&src).unwrap(), expected);
