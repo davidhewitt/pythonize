@@ -6,7 +6,8 @@ use pyo3::{
     types::{PyDict, PyList, PyMapping, PySequence},
 };
 use pythonize::{
-    depythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes, Pythonizer,
+    depythonize_bound, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes,
+    Pythonizer,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -34,12 +35,12 @@ impl PythonizeListType for CustomList {
     fn create_sequence<T, U>(
         py: Python,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
-    ) -> PyResult<&PySequence>
+    ) -> PyResult<Bound<PySequence>>
     where
         T: ToPyObject,
         U: ExactSizeIterator<Item = T>,
     {
-        let sequence = Py::new(
+        let sequence = Bound::new(
             py,
             CustomList {
                 items: elements
@@ -48,9 +49,9 @@ impl PythonizeListType for CustomList {
                     .collect(),
             },
         )?
-        .into_ref(py);
+        .into_any();
 
-        Ok(unsafe { PySequence::try_from_unchecked(sequence.as_ref()) })
+        Ok(unsafe { sequence.downcast_into_unchecked() })
     }
 }
 
@@ -66,10 +67,10 @@ fn test_custom_list() {
         PySequence::register::<CustomList>(py).unwrap();
         let serialized = pythonize_custom::<PythonizeCustomList, _>(py, &json!([1, 2, 3]))
             .unwrap()
-            .into_ref(py);
+            .into_bound(py);
         assert!(serialized.is_instance_of::<CustomList>());
 
-        let deserialized: Value = depythonize(serialized).unwrap();
+        let deserialized: Value = depythonize_bound(serialized).unwrap();
         assert_eq!(deserialized, json!([1, 2, 3]));
     })
 }
@@ -106,15 +107,15 @@ impl CustomDict {
 }
 
 impl PythonizeDictType for CustomDict {
-    fn create_mapping(py: Python) -> PyResult<&PyMapping> {
-        let mapping = Py::new(
+    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>> {
+        let mapping = Bound::new(
             py,
             CustomDict {
                 items: HashMap::new(),
             },
         )?
-        .into_ref(py);
-        Ok(unsafe { PyMapping::try_from_unchecked(mapping.as_ref()) })
+        .into_any();
+        Ok(unsafe { mapping.downcast_into_unchecked() })
     }
 }
 
@@ -131,10 +132,10 @@ fn test_custom_dict() {
         let serialized =
             pythonize_custom::<PythonizeCustomDict, _>(py, &json!({ "hello": 1, "world": 2 }))
                 .unwrap()
-                .into_ref(py);
+                .into_bound(py);
         assert!(serialized.is_instance_of::<CustomDict>());
 
-        let deserialized: Value = depythonize(serialized).unwrap();
+        let deserialized: Value = depythonize_bound(serialized).unwrap();
         assert_eq!(deserialized, json!({ "hello": 1, "world": 2 }));
     })
 }
@@ -147,13 +148,13 @@ fn test_pythonizer_can_be_created() {
         assert!(sample
             .serialize(Pythonizer::new(py))
             .unwrap()
-            .as_ref(py)
+            .bind(py)
             .is_instance_of::<PyDict>());
 
         assert!(sample
             .serialize(Pythonizer::custom::<PythonizeCustomDict>(py))
             .unwrap()
-            .as_ref(py)
+            .bind(py)
             .is_instance_of::<CustomDict>());
     })
 }
