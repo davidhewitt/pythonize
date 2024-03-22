@@ -2,6 +2,7 @@
 
 - Bump edition to 2021
 - Bump MSRV to 1.56
+- Export `PythonizeDefault`
 
 ## 0.20.0 - 2023-10-15
 

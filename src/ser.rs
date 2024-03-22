@@ -51,7 +51,7 @@ impl PythonizeListType for PyList {
     }
 }
 
-struct PythonizeDefault;
+pub struct PythonizeDefault;
 
 impl PythonizeTypes for PythonizeDefault {
     type Map = PyDict;

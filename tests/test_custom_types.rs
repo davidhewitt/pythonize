@@ -6,8 +6,9 @@ use pyo3::{
     types::{PyDict, PyList, PyMapping, PySequence},
 };
 use pythonize::{
-    depythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes,
+    depythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes, Pythonizer,
 };
+use serde::Serialize;
 use serde_json::{json, Value};
 
 #[pyclass(sequence)]
@@ -135,5 +136,24 @@ fn test_custom_dict() {
 
         let deserialized: Value = depythonize(serialized).unwrap();
         assert_eq!(deserialized, json!({ "hello": 1, "world": 2 }));
+    })
+}
+
+#[test]
+fn test_pythonizer_can_be_created() {
+    // https://github.com/davidhewitt/pythonize/pull/56
+    Python::with_gil(|py| {
+        let sample = json!({ "hello": 1, "world": 2 });
+        assert!(sample
+            .serialize(Pythonizer::new(py))
+            .unwrap()
+            .as_ref(py)
+            .is_instance_of::<PyDict>());
+
+        assert!(sample
+            .serialize(Pythonizer::custom::<PythonizeCustomDict>(py))
+            .unwrap()
+            .as_ref(py)
+            .is_instance_of::<CustomDict>());
     })
 }
