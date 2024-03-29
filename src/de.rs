@@ -294,21 +294,21 @@ impl<'a, 'py, 'de, 'bound> de::Deserializer<'de> for &'a mut Depythonizer<'py, '
         V: de::Visitor<'de>,
     {
         let item = &self.input;
-        if let Ok(d) = item.downcast::<PyDict>() {
-            // Get the enum variant from the dict key
-            if d.len() != 1 {
+        if let Ok(s) = item.downcast::<PyString>() {
+            visitor.visit_enum(s.to_cow()?.into_deserializer())
+        } else if let Ok(m) = item.downcast::<PyMapping>() {
+            // Get the enum variant from the mapping key
+            if m.len()? != 1 {
                 return Err(PythonizeError::invalid_length_enum());
             }
-            let variant = d
-                .keys()
+            let variant: Bound<PyString> = m
+                .keys()?
                 .get_item(0)?
                 .downcast_into::<PyString>()
                 .map_err(|_| PythonizeError::dict_key_not_string())?;
-            let value = d.get_item(&variant)?.unwrap();
+            let value = m.get_item(&variant)?;
             let mut de = Depythonizer::from_object(&value);
             visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
-        } else if let Ok(s) = item.downcast::<PyString>() {
-            visitor.visit_enum(s.to_cow()?.into_deserializer())
         } else {
             Err(PythonizeError::invalid_enum_type())
         }
