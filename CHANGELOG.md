@@ -1,4 +1,4 @@
-## Unreleased
+## 0.21.0 - 2024-04-01
 
 - Bump edition to 2021
 - Bump MSRV to 1.56
