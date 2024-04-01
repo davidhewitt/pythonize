@@ -1,7 +1,8 @@
-## Unreleased
+## 0.21.0 - 2024-04-01
 
 - Bump edition to 2021
 - Bump MSRV to 1.56
+- Update to PyO3 0.21
 - Export `PythonizeDefault`
 
 ## 0.20.0 - 2023-10-15
