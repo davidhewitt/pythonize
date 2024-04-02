@@ -68,6 +68,9 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
+      - name: Test (abi3)
+        run: cargo test --verbose --features pyo3/abi3-py37
+
     env:
       RUST_BACKTRACE: 1
 

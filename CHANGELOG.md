@@ -1,3 +1,7 @@
+## 0.21.1 - 2024-04-02
+
+- Fix compile error when using PyO3 `abi3` feature targeting a minimum version below 3.10
+
 ## 0.21.0 - 2024-04-01
 
 - Bump edition to 2021

@@ -130,7 +130,7 @@ impl<'a, 'py, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'py> {
     where
         V: de::Visitor<'de>,
     {
-        let s = self.input.downcast::<PyString>()?.to_str()?;
+        let s = self.input.downcast::<PyString>()?.to_cow()?;
         if s.len() != 1 {
             return Err(PythonizeError::invalid_length_char());
         }
@@ -153,7 +153,7 @@ impl<'a, 'py, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'py> {
         V: de::Visitor<'de>,
     {
         let s = self.input.downcast::<PyString>()?;
-        visitor.visit_str(s.to_str()?)
+        visitor.visit_str(&s.to_cow()?)
     }
 
     fn deserialize_string<V>(self, visitor: V) -> Result<V::Value>
@@ -283,7 +283,7 @@ impl<'a, 'py, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'py> {
             let mut de = Depythonizer::from_object_bound(value);
             visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
         } else if let Ok(s) = item.downcast::<PyString>() {
-            visitor.visit_enum(s.to_str()?.into_deserializer())
+            visitor.visit_enum(s.to_cow()?.into_deserializer())
         } else {
             Err(PythonizeError::invalid_enum_type())
         }
@@ -297,7 +297,7 @@ impl<'a, 'py, 'de> de::Deserializer<'de> for &'a mut Depythonizer<'py> {
             .input
             .downcast::<PyString>()
             .map_err(|_| PythonizeError::dict_key_not_string())?;
-        visitor.visit_str(s.to_str()?)
+        visitor.visit_str(&s.to_cow()?)
     }
 
     fn deserialize_ignored_any<V>(self, visitor: V) -> Result<V::Value>
@@ -405,8 +405,8 @@ impl<'a, 'py, 'de> de::EnumAccess<'de> for PyEnumAccess<'a, 'py> {
     where
         V: de::DeserializeSeed<'de>,
     {
-        let de: de::value::StrDeserializer<'_, PythonizeError> =
-            self.variant.to_str()?.into_deserializer();
+        let cow = self.variant.to_cow()?;
+        let de: de::value::StrDeserializer<'_, PythonizeError> = cow.as_ref().into_deserializer();
         let val = seed.deserialize(de)?;
         Ok((val, self))
     }

@@ -17,7 +17,7 @@ pyo3 = { version = "0.21.0", default-features = false }
 
 [dev-dependencies]
 serde = { version = "1.0", default-features = false, features = ["derive"] }
-pyo3 = { version = "0.21.0", default-features = false, features = ["auto-initialize", "macros"] }
+pyo3 = { version = "0.21.1", default-features = false, features = ["auto-initialize", "macros"] }
 serde_json = "1.0"
 maplit = "1.0.2"
 serde_path_to_error = "0.1.15"
