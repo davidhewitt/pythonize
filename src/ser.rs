@@ -478,6 +478,7 @@ mod test {
     use super::pythonize;
     use maplit::hashmap;
     use pyo3::prelude::*;
+    use pyo3::pybacked::PyBackedStr;
     use pyo3::types::PyDict;
     use serde::Serialize;
 
@@ -497,7 +498,7 @@ mod test {
                 Some(&locals),
             )?;
             let result = locals.get_item("result")?.unwrap();
-            let result = result.extract::<&str>()?;
+            let result = result.extract::<PyBackedStr>()?;
 
             assert_eq!(result, expected);
             assert_eq!(serde_json::to_string(&src).unwrap(), expected);
