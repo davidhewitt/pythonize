@@ -10,7 +10,16 @@ that which is produced directly by `pythonize`.
 This crate converts Rust types which implement the [Serde] serialization
 traits into Python objects using the [PyO3] library.
 
-Pythonize has two public APIs: `pythonize` and `depythonize`.
+Pythonize has two public APIs: `pythonize` and `depythonize_bound`.
+
+
+<div class="warning">
+
+⚠️ Warning: API update in progress 🛠️
+
+PyO3 0.21 has introduced a significant new API, termed the "Bound" API after the new smart pointer `Bound<T>`, and pythonize is doing the same.
+
+</div>
 
 [Serde]: https://github.com/serde-rs/serde
 [PyO3]: https://github.com/PyO3/pyo3
@@ -20,7 +29,7 @@ Pythonize has two public APIs: `pythonize` and `depythonize`.
 ```rust
 use serde::{Serialize, Deserialize};
 use pyo3::Python;
-use pythonize::{depythonize, pythonize};
+use pythonize::{depythonize_bound, pythonize};
 
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 struct Sample {
@@ -37,12 +46,12 @@ let sample = Sample {
 };
 
 // Rust -> Python
-let obj = pythonize(py, &sample).unwrap();
+let obj =  pythonize(py, &sample).unwrap();
 
 assert_eq!("{'foo': 'Foo', 'bar': None}", &format!("{}", obj.as_ref(py).repr().unwrap()));
 
 // Python -> Rust
-let new_sample: Sample = depythonize(obj.as_ref(py)).unwrap();
+let new_sample: Sample = depythonize_bound(obj.into_bound(py)).unwrap();
 
 assert_eq!(new_sample, sample);
 ```
