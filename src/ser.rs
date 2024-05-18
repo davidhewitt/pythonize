@@ -54,6 +54,19 @@ impl PythonizeListType for PyList {
     }
 }
 
+impl PythonizeListType for PyTuple {
+    fn create_sequence<T, U>(
+        py: Python,
+        elements: impl IntoIterator<Item = T, IntoIter = U>,
+    ) -> PyResult<Bound<PySequence>>
+    where
+        T: ToPyObject,
+        U: ExactSizeIterator<Item = T>,
+    {
+        Ok(PyTuple::new_bound(py, elements).into_sequence())
+    }
+}
+
 pub struct PythonizeDefault;
 
 impl PythonizeTypes for PythonizeDefault {
