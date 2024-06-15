@@ -1,3 +1,12 @@
+## Unreleased
+
+- `depythonize()` now take a `&Bound` and is no longer depreciate
+- `depythonize_object()` replace the old `depythonize()` and is depreciated
+- `depythonize_bound()` is depreciated
+- `Depythonizer` now need a `&Bound` and so have extra lifetime `'bound`
+- `Depythonizer::from_object()` now take a `&Bound` and is no longer depreciate
+- `Depythonizer::from_object_bound()` can't be implemented so have been removed
+
 ## 0.21.1 - 2024-04-02
 
 - Fix compile error when using PyO3 `abi3` feature targeting a minimum version below 3.10

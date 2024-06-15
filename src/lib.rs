@@ -30,7 +30,7 @@
 //!     assert_eq!("{'foo': 'Foo', 'bar': None}", &format!("{}", obj.as_ref(py).repr().unwrap()));
 //!
 //!     // Python -> Rust
-//!     let new_sample: Sample = depythonize(obj.as_ref(py)).unwrap();
+//!     let new_sample: Sample = depythonize(&obj.into_bound(py)).unwrap();
 //!
 //!     assert_eq!(new_sample, sample);
 //! });
@@ -40,9 +40,9 @@ mod de;
 mod error;
 mod ser;
 
+pub use crate::de::{depythonize, Depythonizer};
 #[allow(deprecated)]
-pub use crate::de::depythonize;
-pub use crate::de::{depythonize_bound, Depythonizer};
+pub use crate::de::{depythonize_bound, depythonize_object};
 pub use crate::error::{PythonizeError, Result};
 pub use crate::ser::{
     pythonize, pythonize_custom, PythonizeDefault, PythonizeDictType, PythonizeListType,
