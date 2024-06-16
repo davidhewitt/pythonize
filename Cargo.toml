@@ -10,10 +10,15 @@ homepage = "https://github.com/davidhewitt/pythonize"
 repository = "https://github.com/davidhewitt/pythonize"
 documentation = "https://docs.rs/crate/pythonize/"
 
+[features]
+default = ["serde_with"]
+serde_with = ["serde-transcode"]
 
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["std"] }
 pyo3 = { version = "0.21.0", default-features = false }
+serde-transcode = { version = "1.0", default-features = false, optional = true }
+
 
 [dev-dependencies]
 serde = { version = "1.0", default-features = false, features = ["derive"] }
