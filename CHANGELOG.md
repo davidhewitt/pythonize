@@ -1,3 +1,9 @@
+## Unreleased
+
+ - Add `pyobject` module for serialize and deserialize `PyObject`
+ - Add `PyObjectVisitor` that can be used to implement deserialize
+ - Add feature `serde_with`
+
 ## 0.21.1 - 2024-04-02
 
 - Fix compile error when using PyO3 `abi3` feature targeting a minimum version below 3.10
