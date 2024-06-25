@@ -1,6 +1,9 @@
 ## Unreleased
 
 - Update to PyO3 0.22
+- Remove deprecated `depythonize`, use `depythonize_bound` instead
+- Remove deprecated `from_object`, use `from_object_bound` instead
+- Remove conversion from `PyDowncastError` to `PythonizeError`
 
 ## 0.21.1 - 2024-04-02
 

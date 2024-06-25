@@ -9,8 +9,8 @@
 //! # Examples
 //! ```
 //! use serde::{Serialize, Deserialize};
-//! use pyo3::Python;
-//! use pythonize::{depythonize, pythonize};
+//! use pyo3::{types::PyAnyMethods, Python};
+//! use pythonize::{depythonize_bound, pythonize};
 //!
 //! #[derive(Debug, Serialize, Deserialize, PartialEq)]
 //! struct Sample {
@@ -27,10 +27,10 @@
 //!     // Rust -> Python
 //!     let obj = pythonize(py, &sample).unwrap();
 //!
-//!     assert_eq!("{'foo': 'Foo', 'bar': None}", &format!("{}", obj.as_ref(py).repr().unwrap()));
+//!     assert_eq!("{'foo': 'Foo', 'bar': None}", &format!("{}", obj.bind(py).repr().unwrap()));
 //!
 //!     // Python -> Rust
-//!     let new_sample: Sample = depythonize(obj.as_ref(py)).unwrap();
+//!     let new_sample: Sample = depythonize_bound(obj.into_bound(py)).unwrap();
 //!
 //!     assert_eq!(new_sample, sample);
 //! });
@@ -40,8 +40,6 @@ mod de;
 mod error;
 mod ser;
 
-#[allow(deprecated)]
-pub use crate::de::depythonize;
 pub use crate::de::{depythonize_bound, Depythonizer};
 pub use crate::error::{PythonizeError, Result};
 pub use crate::ser::{

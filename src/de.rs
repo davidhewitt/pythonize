@@ -1,21 +1,8 @@
-use pyo3::{types::*, Bound, PyNativeType};
+use pyo3::{types::*, Bound};
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 
 use crate::error::{PythonizeError, Result};
-
-/// Attempt to convert a Python object to an instance of `T`
-#[deprecated(
-    since = "0.21.0",
-    note = "will be replaced by `depythonize_bound` in a future release"
-)]
-pub fn depythonize<'de, T>(obj: &'de PyAny) -> Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let mut depythonizer = Depythonizer::from_object_bound(obj.as_borrowed().to_owned());
-    T::deserialize(&mut depythonizer)
-}
 
 /// Attempt to convert a Python object to an instance of `T`
 pub fn depythonize_bound<'py, T>(obj: Bound<'py, PyAny>) -> Result<T>
@@ -32,15 +19,6 @@ pub struct Depythonizer<'py> {
 }
 
 impl<'py> Depythonizer<'py> {
-    /// Create a deserializer from a Python object
-    #[deprecated(
-        since = "0.21.0",
-        note = "will be replaced by `Depythonizer::from_object_bound` in a future version"
-    )]
-    pub fn from_object(input: &'py PyAny) -> Self {
-        Self::from_object_bound(input.as_borrowed().to_owned())
-    }
-
     /// Create a deserializer from a Python object
     pub fn from_object_bound(input: Bound<'py, PyAny>) -> Self {
         Depythonizer { input }
