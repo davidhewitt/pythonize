@@ -77,6 +77,32 @@ fn test_de_valid() {
                 ])
             }
         );
+
+        let pynested_int = PyDict::new_bound(py);
+        pynested_int.set_item("nested_key", u64::MAX).unwrap();
+
+        let de = &mut pythonize::Depythonizer::from_object_bound(pynested_int.into_any());
+        let nested_int: Nested<u64> = serde_path_to_error::deserialize(de).unwrap();
+
+        assert_eq!(
+            nested_int,
+            Nested {
+                nested_key : u64::MAX
+            }
+        );
+
+        let pynested_int = PyDict::new_bound(py);
+        pynested_int.set_item("nested_key", -1).unwrap();
+
+        let de = &mut pythonize::Depythonizer::from_object_bound(pynested_int.into_any());
+        let nested_int: Nested<i64> = serde_path_to_error::deserialize(de).unwrap();
+
+        assert_eq!(
+            nested_int,
+            Nested {
+                nested_key : -1
+            }
+        );
     })
 }
 
@@ -101,6 +127,20 @@ fn test_de_invalid() {
 
         assert_eq!(err.path().to_string(), "root_map.nested_1.nested_key");
         assert_eq!(err.to_string(), "root_map.nested_1.nested_key: unexpected type: 'int' object cannot be converted to 'PyString'");
+
+        let pynested_int = PyDict::new_bound(py);
+        pynested_int.set_item("nested_key", u64::MAX).unwrap();
+
+        let de = &mut pythonize::Depythonizer::from_object_bound(pynested_int.into_any());
+        let err = serde_path_to_error::deserialize::<_, Nested<i64>>(de).unwrap_err();
+        assert_eq!(err.to_string(), "nested_key: OverflowError: int too big to convert");
+
+        let pynested_int = PyDict::new_bound(py);
+        pynested_int.set_item("nested_key", -1).unwrap();
+
+        let de = &mut pythonize::Depythonizer::from_object_bound(pynested_int.into_any());
+        let err = serde_path_to_error::deserialize::<_, Nested<u64>>(de).unwrap_err();
+        assert_eq!(err.to_string(), "nested_key: OverflowError: can't convert negative int to unsigned");
     })
 }
 
