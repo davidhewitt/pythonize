@@ -36,9 +36,10 @@ jobs:
     strategy:
       fail-fast: false  # If one platform fails, allow the rest to keep testing.
       matrix:
+        python-architecture: ["x64"]
         python-version: ["3.8", "3.9", "3.10", "3.11", "3.12"]
         os: [
-          "macos-latest",
+          "macos-13",
           "ubuntu-latest",
           "windows-latest",
         ]
@@ -47,6 +48,10 @@ jobs:
           - python-version: "3.12"
             os: "ubuntu-latest"
             rust: "1.63"
+          - python-version: "3.12"
+            python-architecture: "arm64"
+            os: "macos-latest"
+            rust: "stable"
 
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +60,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: x64
+          architecture: ${{ matrix.python-python-architecture }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
