@@ -1,5 +1,6 @@
 ## Unreleased
 
+- Bump MSRV to 1.63
 - Update to PyO3 0.22
 - Remove deprecated `from_object`, use `from_object_bound` instead
 - Remove conversion from `PyDowncastError` to `PythonizeError`

@@ -46,7 +46,7 @@ jobs:
         include:
           - python-version: "3.12"
             os: "ubuntu-latest"
-            rust: "1.56"
+            rust: "1.63"
 
     steps:
       - uses: actions/checkout@v4
