@@ -788,6 +788,21 @@ mod test {
     fn test_int_limits() {
         Python::with_gil(|py| {
             // serde_json::Value supports u64 and i64 as maxiumum sizes
+            let _: serde_json::Value = depythonize(&u8::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u8::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i8::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i8::MIN.into_py(py).into_bound(py)).unwrap();
+
+            let _: serde_json::Value = depythonize(&u16::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u16::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i16::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i16::MIN.into_py(py).into_bound(py)).unwrap();
+
+            let _: serde_json::Value = depythonize(&u32::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u32::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i32::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i32::MIN.into_py(py).into_bound(py)).unwrap();
+
             let _: serde_json::Value = depythonize(&u64::MAX.into_py(py).into_bound(py)).unwrap();
             let _: serde_json::Value = depythonize(&u64::MIN.into_py(py).into_bound(py)).unwrap();
             let _: serde_json::Value = depythonize(&i64::MAX.into_py(py).into_bound(py)).unwrap();
