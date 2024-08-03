@@ -71,6 +71,38 @@ impl<'py, 'bound> Depythonizer<'py, 'bound> {
     fn dict_access(&self) -> Result<PyMappingAccess<'py>> {
         PyMappingAccess::new(self.input.downcast()?)
     }
+
+    fn deserialize_any_int<'de, V>(&self, int: &Bound<'_, PyInt>, visitor: V) -> Result<V::Value>
+    where
+        V: de::Visitor<'de>,
+    {
+        if let Ok(x) = int.extract::<u128>() {
+            if let Ok(x) = u8::try_from(x) {
+                visitor.visit_u8(x)
+            } else if let Ok(x) = u16::try_from(x) {
+                visitor.visit_u16(x)
+            } else if let Ok(x) = u32::try_from(x) {
+                visitor.visit_u32(x)
+            } else if let Ok(x) = u64::try_from(x) {
+                visitor.visit_u64(x)
+            } else {
+                visitor.visit_u128(x)
+            }
+        } else {
+            let x: i128 = int.extract()?;
+            if let Ok(x) = i8::try_from(x) {
+                visitor.visit_i8(x)
+            } else if let Ok(x) = i16::try_from(x) {
+                visitor.visit_i16(x)
+            } else if let Ok(x) = i32::try_from(x) {
+                visitor.visit_i32(x)
+            } else if let Ok(x) = i64::try_from(x) {
+                visitor.visit_i64(x)
+            } else {
+                visitor.visit_i128(x)
+            }
+        }
+    }
 }
 
 macro_rules! deserialize_type {
@@ -99,8 +131,8 @@ impl<'a, 'py, 'de, 'bound> de::Deserializer<'de> for &'a mut Depythonizer<'py, '
             self.deserialize_unit(visitor)
         } else if obj.is_instance_of::<PyBool>() {
             self.deserialize_bool(visitor)
-        } else if obj.is_instance_of::<PyInt>() {
-            self.deserialize_i64(visitor)
+        } else if let Ok(x) = obj.downcast::<PyInt>() {
+            self.deserialize_any_int(x, visitor)
         } else if obj.is_instance_of::<PyList>() || obj.is_instance_of::<PyTuple>() {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.is_instance_of::<PyDict>() {
@@ -151,10 +183,12 @@ impl<'a, 'py, 'de, 'bound> de::Deserializer<'de> for &'a mut Depythonizer<'py, '
     deserialize_type!(deserialize_i16 => visit_i16);
     deserialize_type!(deserialize_i32 => visit_i32);
     deserialize_type!(deserialize_i64 => visit_i64);
+    deserialize_type!(deserialize_i128 => visit_i128);
     deserialize_type!(deserialize_u8 => visit_u8);
     deserialize_type!(deserialize_u16 => visit_u16);
     deserialize_type!(deserialize_u32 => visit_u32);
     deserialize_type!(deserialize_u64 => visit_u64);
+    deserialize_type!(deserialize_u128 => visit_u128);
     deserialize_type!(deserialize_f32 => visit_f32);
     deserialize_type!(deserialize_f64 => visit_f64);
 
@@ -459,7 +493,7 @@ mod test {
     use super::*;
     use crate::error::ErrorImpl;
     use maplit::hashmap;
-    use pyo3::Python;
+    use pyo3::{IntoPy, Python};
     use serde_json::{json, Value as JsonValue};
 
     fn test_de<T>(code: &str, expected: &T, expected_json: &JsonValue)
@@ -748,5 +782,22 @@ mod test {
             json!({"name": "SomeFoo", "bar": { "value": 13, "variant": { "Tuple": [-1.5, 8]}}});
         let code = "{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}";
         test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_int_limits() {
+        Python::with_gil(|py| {
+            // serde_json::Value supports u64 and i64 as maxiumum sizes
+            let _: serde_json::Value = depythonize(&u64::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u64::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i64::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&i64::MIN.into_py(py).into_bound(py)).unwrap();
+
+            let _: u128 = depythonize(&u128::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: i128 = depythonize(&u128::MIN.into_py(py).into_bound(py)).unwrap();
+
+            let _: i128 = depythonize(&i128::MAX.into_py(py).into_bound(py)).unwrap();
+            let _: i128 = depythonize(&i128::MIN.into_py(py).into_bound(py)).unwrap();
+        });
     }
 }

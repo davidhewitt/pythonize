@@ -1,5 +1,7 @@
 ## Unreleased
 
+- Support `u128` / `i128` integers.
+- Fix overflow error attempting to depythonize `u64` values greater than `i64::MAX` to types like `serde_json::Value`
 - `depythonize()` now take a `&Bound` and is no longer depreciate
 - `depythonize_object()` replace the old `depythonize()` and is depreciated
 - `depythonize_bound()` is depreciated
