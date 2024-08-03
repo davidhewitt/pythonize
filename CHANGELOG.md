@@ -1,9 +1,14 @@
 ## Unreleased
 
 - Update to PyO3 0.22
-- Remove deprecated `depythonize`, use `depythonize_bound` instead
 - Remove deprecated `from_object`, use `from_object_bound` instead
 - Remove conversion from `PyDowncastError` to `PythonizeError`
+- `depythonize()` now take a `&Bound` and is no longer deprecated
+- `depythonize_bound()` is now deprecated
+- `Depythonizer` now contains a `&Bound` and so has an extra lifetime `'bound`
+- `Depythonizer::from_object()` now take a `&Bound` and is no longer depreciated
+- `Depythonizer::from_object_bound()` can't be implemented so have been removed
+- `pythonize()` now returns `Bound<'py, PyAny>` instead of `Py<PyAny>`
 
 ## 0.21.1 - 2024-04-02
 

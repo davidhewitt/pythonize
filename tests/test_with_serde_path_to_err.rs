@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
-    Py, PyAny, Python,
 };
 use pythonize::PythonizeTypes;
 use serde::{Deserialize, Serialize};
@@ -54,7 +53,7 @@ fn test_de_valid() {
 
         pyroot.set_item("root_map", nested).unwrap();
 
-        let de = &mut pythonize::Depythonizer::from_object_bound(pyroot.into_any());
+        let de = &mut pythonize::Depythonizer::from_object(&pyroot);
         let root: Root<String> = serde_path_to_error::deserialize(de).unwrap();
 
         assert_eq!(
@@ -96,7 +95,7 @@ fn test_de_invalid() {
 
         pyroot.set_item("root_map", nested).unwrap();
 
-        let de = &mut pythonize::Depythonizer::from_object_bound(pyroot.into_any());
+        let de = &mut pythonize::Depythonizer::from_object(&pyroot);
         let err = serde_path_to_error::deserialize::<_, Root<String>>(de).unwrap_err();
 
         assert_eq!(err.path().to_string(), "root_map.nested_1.nested_key");
@@ -126,9 +125,9 @@ fn test_ser_valid() {
         };
 
         let ser = pythonize::Pythonizer::<Root<String>>::from(py);
-        let pyroot: Py<PyAny> = serde_path_to_error::serialize(&root, ser).unwrap();
+        let pyroot: Bound<'_, PyAny> = serde_path_to_error::serialize(&root, ser).unwrap();
 
-        let pyroot = pyroot.bind(py).downcast::<PyDict>().unwrap();
+        let pyroot = pyroot.downcast::<PyDict>().unwrap();
         assert_eq!(pyroot.len(), 2);
 
         let root_value: String = pyroot
