@@ -534,6 +534,30 @@ mod test {
     }
 
     #[test]
+    fn test_nested_struct() {
+        #[derive(Serialize)]
+        struct Foo {
+            name: String,
+            bar: Bar,
+        }
+
+        #[derive(Serialize)]
+        struct Bar {
+            name: String,
+        }
+
+        test_ser(
+            Foo {
+                name: "foo".to_string(),
+                bar: Bar {
+                    name: "bar".to_string(),
+                },
+            },
+            r#"{"name":"foo","bar":{"name":"bar"}}"#,
+        )
+    }
+
+    #[test]
     fn test_tuple_struct() {
         #[derive(Serialize)]
         struct TupleStruct(String, usize);
