@@ -483,7 +483,7 @@ mod test {
     use maplit::hashmap;
     use pyo3::prelude::*;
     use pyo3::pybacked::PyBackedStr;
-    use pyo3::types::PyDict;
+    use pyo3::types::{PyBytes, PyDict};
     use serde::Serialize;
 
     fn test_ser<T>(src: T, expected: &str)
@@ -660,6 +660,27 @@ mod test {
     }
 
     #[test]
+    fn test_floats() {
+        #[derive(Serialize)]
+        struct Floats {
+            a: f32,
+            b: f64,
+        }
+
+        test_ser(Floats { a: 1.0, b: 2.0 }, r#"{"a":1.0,"b":2.0}"#)
+    }
+
+    #[test]
+    fn test_char() {
+        #[derive(Serialize)]
+        struct Char {
+            a: char,
+        }
+
+        test_ser(Char { a: 'a' }, r#"{"a":"a"}"#)
+    }
+
+    #[test]
     fn test_bool() {
         test_ser(true, "true");
         test_ser(false, "false");
@@ -672,10 +693,21 @@ mod test {
 
         test_ser((), "null");
         test_ser(S, "null");
+
+        test_ser(Some(1), "1");
+        test_ser(None::<i32>, "null");
     }
 
     #[test]
     fn test_bytes() {
+        // serde treats &[u8] as a sequence of integers due to lack of specialization
         test_ser(b"foo", "[102,111,111]");
+
+        Python::with_gil(|py| {
+            assert!(pythonize(py, serde_bytes::Bytes::new(b"foo"))
+                .expect("bytes will always serialize successfully")
+                .eq(&PyBytes::new_bound(py, b"foo"))
+                .expect("bytes will always compare successfully"));
+        });
     }
 }
