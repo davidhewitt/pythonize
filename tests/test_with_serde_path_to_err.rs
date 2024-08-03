@@ -3,7 +3,6 @@ use std::collections::BTreeMap;
 use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
-    Py, PyAny, Python,
 };
 use pythonize::PythonizeTypes;
 use serde::{Deserialize, Serialize};
@@ -126,9 +125,9 @@ fn test_ser_valid() {
         };
 
         let ser = pythonize::Pythonizer::<Root<String>>::from(py);
-        let pyroot: Py<PyAny> = serde_path_to_error::serialize(&root, ser).unwrap();
+        let pyroot: Bound<'_, PyAny> = serde_path_to_error::serialize(&root, ser).unwrap();
 
-        let pyroot = pyroot.bind(py).downcast::<PyDict>().unwrap();
+        let pyroot = pyroot.downcast::<PyDict>().unwrap();
         assert_eq!(pyroot.len(), 2);
 
         let root_value: String = pyroot

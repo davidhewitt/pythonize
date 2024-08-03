@@ -64,9 +64,7 @@ impl PythonizeTypes for PythonizeCustomList {
 fn test_custom_list() {
     Python::with_gil(|py| {
         PySequence::register::<CustomList>(py).unwrap();
-        let serialized = pythonize_custom::<PythonizeCustomList, _>(py, &json!([1, 2, 3]))
-            .unwrap()
-            .into_bound(py);
+        let serialized = pythonize_custom::<PythonizeCustomList, _>(py, &json!([1, 2, 3])).unwrap();
         assert!(serialized.is_instance_of::<CustomList>());
 
         let deserialized: Value = depythonize(&serialized).unwrap();
@@ -130,8 +128,7 @@ fn test_custom_dict() {
         PyMapping::register::<CustomDict>(py).unwrap();
         let serialized =
             pythonize_custom::<PythonizeCustomDict, _>(py, &json!({ "hello": 1, "world": 2 }))
-                .unwrap()
-                .into_bound(py);
+                .unwrap();
         assert!(serialized.is_instance_of::<CustomDict>());
 
         let deserialized: Value = depythonize(&serialized).unwrap();
@@ -147,13 +144,11 @@ fn test_pythonizer_can_be_created() {
         assert!(sample
             .serialize(Pythonizer::new(py))
             .unwrap()
-            .bind(py)
             .is_instance_of::<PyDict>());
 
         assert!(sample
             .serialize(Pythonizer::custom::<PythonizeCustomDict>(py))
             .unwrap()
-            .bind(py)
             .is_instance_of::<CustomDict>());
     })
 }

@@ -1,4 +1,4 @@
-use pyo3::{types::*, Bound, PyNativeType};
+use pyo3::{types::*, Bound};
 use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 
@@ -14,28 +14,11 @@ where
 }
 
 /// Attempt to convert a Python object to an instance of `T`
-#[deprecated(
-    since = "0.21.1",
-    note = "will be replaced by `depythonize` in a future release"
-)]
+#[deprecated(since = "0.22.0", note = "use `depythonize` instead")]
 pub fn depythonize_bound<'py, T>(obj: Bound<'py, PyAny>) -> Result<T>
 where
     T: for<'a> Deserialize<'a>,
 {
-    let mut depythonizer = Depythonizer::from_object(&obj);
-    T::deserialize(&mut depythonizer)
-}
-
-/// Attempt to convert a Python object to an instance of `T`
-#[deprecated(
-    since = "0.21.1",
-    note = "will be replaced by `depythonize` in a future release"
-)]
-pub fn depythonize_object<'de, T>(obj: &'de PyAny) -> Result<T>
-where
-    T: Deserialize<'de>,
-{
-    let obj = obj.as_borrowed().to_owned();
     let mut depythonizer = Depythonizer::from_object(&obj);
     T::deserialize(&mut depythonizer)
 }
@@ -47,9 +30,7 @@ pub struct Depythonizer<'py, 'bound> {
 
 impl<'py, 'bound> Depythonizer<'py, 'bound> {
     /// Create a deserializer from a Python object
-    pub fn from_object<'input, 'gil>(
-        input: &'input Bound<'gil, PyAny>,
-    ) -> Depythonizer<'gil, 'input> {
+    pub fn from_object<'input>(input: &'input Bound<'py, PyAny>) -> Depythonizer<'py, 'input> {
         Depythonizer { input }
     }
 

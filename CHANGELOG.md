@@ -1,13 +1,15 @@
 ## Unreleased
 
+- Bump MSRV to 1.63
+- Update to PyO3 0.22
 - Support `u128` / `i128` integers.
+- Remove support for PyO3's `gil-refs` feature
+- `pythonize()` now returns `Bound<'py, PyAny>` instead of `Py<PyAny>`
+- `depythonize()` now take a `&Bound` and is no longer deprecated
+- `depythonize_bound()` is now deprecated
+- `Depythonizer` now contains a `&Bound` and so has an extra lifetime `'bound`
+- `Depythonizer::from_object()` now takes a `&Bound` and is no longer deprecated
 - Fix overflow error attempting to depythonize `u64` values greater than `i64::MAX` to types like `serde_json::Value`
-- `depythonize()` now take a `&Bound` and is no longer depreciate
-- `depythonize_object()` replace the old `depythonize()` and is depreciated
-- `depythonize_bound()` is depreciated
-- `Depythonizer` now need a `&Bound` and so have extra lifetime `'bound`
-- `Depythonizer::from_object()` now take a `&Bound` and is no longer depreciate
-- `Depythonizer::from_object_bound()` can't be implemented so have been removed
 
 ## 0.21.1 - 2024-04-02
 

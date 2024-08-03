@@ -47,7 +47,7 @@ jobs:
         include:
           - python-version: "3.12"
             os: "ubuntu-latest"
-            rust: "1.56"
+            rust: "1.63"
           - python-version: "3.12"
             python-architecture: "arm64"
             os: "macos-latest"
