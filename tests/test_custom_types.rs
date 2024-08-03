@@ -6,8 +6,7 @@ use pyo3::{
     types::{PyDict, PyList, PyMapping, PySequence},
 };
 use pythonize::{
-    depythonize_bound, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes,
-    Pythonizer,
+    depythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes, Pythonizer,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -70,7 +69,7 @@ fn test_custom_list() {
             .into_bound(py);
         assert!(serialized.is_instance_of::<CustomList>());
 
-        let deserialized: Value = depythonize_bound(serialized).unwrap();
+        let deserialized: Value = depythonize(&serialized).unwrap();
         assert_eq!(deserialized, json!([1, 2, 3]));
     })
 }
@@ -135,7 +134,7 @@ fn test_custom_dict() {
                 .into_bound(py);
         assert!(serialized.is_instance_of::<CustomDict>());
 
-        let deserialized: Value = depythonize_bound(serialized).unwrap();
+        let deserialized: Value = depythonize(&serialized).unwrap();
         assert_eq!(deserialized, json!({ "hello": 1, "world": 2 }));
     })
 }
