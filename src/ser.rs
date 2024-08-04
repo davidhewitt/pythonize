@@ -12,32 +12,43 @@ use crate::error::{PythonizeError, Result};
 /// Trait for types which can represent a Python mapping
 pub trait PythonizeMappingType {
     /// Builder type for Python mappings
-    type Builder<'py>: MappingBuilder<'py>;
+    type Builder<'py>;
 
     /// Create a builder for a Python mapping
-    fn create_builder(py: Python, len: Option<usize>) -> PyResult<Self::Builder<'_>>;
+    fn builder(py: Python, len: Option<usize>) -> PyResult<Self::Builder<'_>>;
+
+    /// Adds the key-value item to the mapping being built
+    fn push_item<K: ToPyObject, V: ToPyObject>(
+        builder: &mut Self::Builder<'_>,
+        key: K,
+        value: V,
+    ) -> PyResult<()>;
+
+    /// Build the Python mapping
+    fn finish(builder: Self::Builder<'_>) -> PyResult<Bound<'_, PyMapping>>;
 }
 
 /// Trait for types which can represent a Python mapping and have a name
 pub trait PythonizeNamedMappingType {
     /// Builder type for Python mappings with a name
-    type Builder<'py>: MappingBuilder<'py>;
+    type Builder<'py>;
 
     /// Create a builder for a Python mapping with a name
-    fn create_builder<'py>(
+    fn builder<'py>(
         py: Python<'py>,
         len: usize,
         name: &'static str,
     ) -> PyResult<Self::Builder<'py>>;
-}
 
-/// Trait for types which can build a Python mapping
-pub trait MappingBuilder<'py> {
     /// Adds the key-value item to the mapping being built
-    fn push_item<K: ToPyObject, V: ToPyObject>(&mut self, key: K, value: V) -> PyResult<()>;
+    fn push_item<K: ToPyObject, V: ToPyObject>(
+        builder: &mut Self::Builder<'_>,
+        key: K,
+        value: V,
+    ) -> PyResult<()>;
 
     /// Build the Python mapping
-    fn finish(self) -> PyResult<Bound<'py, PyMapping>>;
+    fn finish(builder: Self::Builder<'_>) -> PyResult<Bound<'_, PyMapping>>;
 }
 
 /// Trait for types which can represent a Python sequence
@@ -65,30 +76,46 @@ pub trait PythonizeTypes {
 impl PythonizeMappingType for PyDict {
     type Builder<'py> = Bound<'py, Self>;
 
-    fn create_builder(py: Python, _len: Option<usize>) -> PyResult<Self::Builder<'_>> {
+    fn builder(py: Python, _len: Option<usize>) -> PyResult<Self::Builder<'_>> {
         Ok(Self::new_bound(py))
+    }
+
+    fn push_item<K: ToPyObject, V: ToPyObject>(
+        builder: &mut Self::Builder<'_>,
+        key: K,
+        value: V,
+    ) -> PyResult<()> {
+        builder.set_item(key, value)
+    }
+
+    fn finish(builder: Self::Builder<'_>) -> PyResult<Bound<'_, PyMapping>> {
+        Ok(builder.into_any().downcast_into().unwrap())
     }
 }
 
-impl PythonizeNamedMappingType for PyDict {
-    type Builder<'py> = Bound<'py, Self>;
+pub struct PythonizeUnnamedMappingWrapper<T: PythonizeMappingType>(T);
 
-    fn create_builder<'py>(
+impl<T: PythonizeMappingType> PythonizeNamedMappingType for PythonizeUnnamedMappingWrapper<T> {
+    type Builder<'py> = <T as PythonizeMappingType>::Builder<'py>;
+
+    fn builder<'py>(
         py: Python<'py>,
-        _len: usize,
+        len: usize,
         _name: &'static str,
     ) -> PyResult<Self::Builder<'py>> {
-        Ok(Self::new_bound(py))
-    }
-}
-
-impl<'py> MappingBuilder<'py> for Bound<'py, PyDict> {
-    fn push_item<K: ToPyObject, V: ToPyObject>(&mut self, key: K, value: V) -> PyResult<()> {
-        self.set_item(key, value)
+        <T as PythonizeMappingType>::builder(py, Some(len))
     }
 
-    fn finish(self) -> PyResult<Bound<'py, PyMapping>> {
-        Ok(self.into_any().downcast_into().unwrap())
+    fn push_item<K: ToPyObject, V: ToPyObject>(
+        builder: &mut Self::Builder<'_>,
+        key: K,
+        value: V,
+    ) -> PyResult<()> {
+        <T as PythonizeMappingType>::push_item(builder, key, value)
+    }
+
+    fn finish(builder: Self::Builder<'_>) -> PyResult<Bound<'_, PyMapping>> {
+        <T as PythonizeMappingType>::finish(builder)
     }
 }
 
@@ -125,7 +152,7 @@ pub struct PythonizeDefault;
 
 impl PythonizeTypes for PythonizeDefault {
     type Map = PyDict;
-    type NamedMap = PyDict;
+    type NamedMap = PythonizeUnnamedMappingWrapper<PyDict>;
     type List = PyList;
 }
 
@@ -327,9 +354,9 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        let mut m = P::NamedMap::create_builder(self.py, 1, name)?;
-        m.push_item(variant, value.serialize(self)?)?;
-        Ok(m.finish()?.into_any())
+        let mut m = P::NamedMap::builder(self.py, 1, name)?;
+        P::NamedMap::push_item(&mut m, variant, value.serialize(self)?)?;
+        Ok(P::NamedMap::finish(m)?.into_any())
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<PythonCollectionSerializer<'py, P>> {
@@ -377,7 +404,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
 
     fn serialize_map(self, len: Option<usize>) -> Result<PythonMapSerializer<'py, P>> {
         Ok(PythonMapSerializer {
-            builder: P::Map::create_builder(self.py, len)?,
+            builder: P::Map::builder(self.py, len)?,
             key: None,
             py: self.py,
             _types: PhantomData,
@@ -391,7 +418,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     ) -> Result<PythonStructDictSerializer<'py, P>> {
         Ok(PythonStructDictSerializer {
             py: self.py,
-            builder: P::NamedMap::create_builder(self.py, len, name)?,
+            builder: P::NamedMap::builder(self.py, len, name)?,
             _types: PhantomData,
         })
     }
@@ -408,7 +435,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
             variant,
             inner: PythonStructDictSerializer {
                 py: self.py,
-                builder: P::NamedMap::create_builder(self.py, len, variant)?,
+                builder: P::NamedMap::builder(self.py, len, variant)?,
                 _types: PhantomData,
             },
         })
@@ -477,9 +504,9 @@ impl<'py, P: PythonizeTypes> ser::SerializeTupleVariant for PythonTupleVariantSe
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let mut m = P::NamedMap::create_builder(self.inner.py, 1, self.name)?;
-        m.push_item(self.variant, ser::SerializeTuple::end(self.inner)?)?;
-        Ok(m.finish()?.into_any())
+        let mut m = P::NamedMap::builder(self.inner.py, 1, self.name)?;
+        P::NamedMap::push_item(&mut m, self.variant, ser::SerializeTuple::end(self.inner)?)?;
+        Ok(P::NamedMap::finish(m)?.into_any())
     }
 }
 
@@ -499,7 +526,8 @@ impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        self.builder.push_item(
+        P::Map::push_item(
+            &mut self.builder,
             self.key
                 .take()
                 .expect("serialize_value should always be called after serialize_key"),
@@ -509,7 +537,7 @@ impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        Ok(self.builder.finish()?.into_any())
+        Ok(P::Map::finish(self.builder)?.into_any())
     }
 }
 
@@ -521,13 +549,16 @@ impl<'py, P: PythonizeTypes> ser::SerializeStruct for PythonStructDictSerializer
     where
         T: ?Sized + Serialize,
     {
-        self.builder
-            .push_item(key, pythonize_custom::<P, _>(self.py, value)?)?;
+        P::NamedMap::push_item(
+            &mut self.builder,
+            key,
+            pythonize_custom::<P, _>(self.py, value)?,
+        )?;
         Ok(())
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        Ok(self.builder.finish()?.into_any())
+        Ok(P::NamedMap::finish(self.builder)?.into_any())
     }
 }
 
@@ -539,17 +570,19 @@ impl<'py, P: PythonizeTypes> ser::SerializeStructVariant for PythonStructVariant
     where
         T: ?Sized + Serialize,
     {
-        self.inner
-            .builder
-            .push_item(key, pythonize_custom::<P, _>(self.inner.py, value)?)?;
+        P::NamedMap::push_item(
+            &mut self.inner.builder,
+            key,
+            pythonize_custom::<P, _>(self.inner.py, value)?,
+        )?;
         Ok(())
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let v = self.inner.builder.finish()?;
-        let mut m = P::NamedMap::create_builder(self.inner.py, 1, self.name)?;
-        m.push_item(self.variant, v)?;
-        Ok(m.finish()?.into_any())
+        let v = P::NamedMap::finish(self.inner.builder)?;
+        let mut m = P::NamedMap::builder(self.inner.py, 1, self.name)?;
+        P::NamedMap::push_item(&mut m, self.variant, v)?;
+        Ok(P::NamedMap::finish(m)?.into_any())
     }
 }
 

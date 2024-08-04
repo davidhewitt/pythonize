@@ -4,7 +4,7 @@ use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
 };
-use pythonize::PythonizeTypes;
+use pythonize::{PythonizeTypes, PythonizeUnnamedMappingWrapper};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -15,7 +15,7 @@ struct Root<T> {
 
 impl<T> PythonizeTypes for Root<T> {
     type Map = PyDict;
-    type NamedMap = PyDict;
+    type NamedMap = PythonizeUnnamedMappingWrapper<PyDict>;
     type List = PyList;
 }
 
