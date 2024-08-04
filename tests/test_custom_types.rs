@@ -125,7 +125,7 @@ impl PythonizeNamedMappingType for CustomDict {
     fn create_builder<'py>(
         py: Python<'py>,
         len: usize,
-        _name: &str,
+        _name: &'static str,
     ) -> PyResult<Self::Builder<'py>> {
         Bound::new(
             py,

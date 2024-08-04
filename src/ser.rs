@@ -24,8 +24,11 @@ pub trait PythonizeNamedMappingType {
     type Builder<'py>: MappingBuilder<'py>;
 
     /// Create a builder for a Python mapping with a name
-    fn create_builder<'py>(py: Python<'py>, len: usize, name: &str)
-        -> PyResult<Self::Builder<'py>>;
+    fn create_builder<'py>(
+        py: Python<'py>,
+        len: usize,
+        name: &'static str,
+    ) -> PyResult<Self::Builder<'py>>;
 }
 
 /// Trait for types which can build a Python mapping
@@ -73,7 +76,7 @@ impl PythonizeNamedMappingType for PyDict {
     fn create_builder<'py>(
         py: Python<'py>,
         _len: usize,
-        _name: &str,
+        _name: &'static str,
     ) -> PyResult<Self::Builder<'py>> {
         Ok(Self::new_bound(py))
     }
