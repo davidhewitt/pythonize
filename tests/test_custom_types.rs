@@ -6,7 +6,8 @@ use pyo3::{
     types::{PyDict, PyList, PyMapping, PySequence},
 };
 use pythonize::{
-    depythonize, pythonize_custom, PythonizeDictType, PythonizeListType, PythonizeTypes, Pythonizer,
+    depythonize, pythonize_custom, MappingBuilder, PythonizeListType, PythonizeMappingType,
+    PythonizeNamedMappingType, PythonizeTypes, Pythonizer,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -57,6 +58,7 @@ impl PythonizeListType for CustomList {
 struct PythonizeCustomList;
 impl PythonizeTypes for PythonizeCustomList {
     type Map = PyDict;
+    type NamedMap = PyDict;
     type List = CustomList;
 }
 
@@ -103,22 +105,54 @@ impl CustomDict {
     }
 }
 
-impl PythonizeDictType for CustomDict {
-    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>> {
-        let mapping = Bound::new(
+impl PythonizeMappingType for CustomDict {
+    type Builder<'py> = CustomDictBuilder<'py>;
+
+    fn create_builder<'py>(py: Python<'py>, len: Option<usize>) -> PyResult<Self::Builder<'py>> {
+        Bound::new(
             py,
             CustomDict {
-                items: HashMap::new(),
+                items: HashMap::with_capacity(len.unwrap_or(0)),
             },
-        )?
-        .into_any();
-        Ok(unsafe { mapping.downcast_into_unchecked() })
+        )
+        .map(CustomDictBuilder)
+    }
+}
+
+impl PythonizeNamedMappingType for CustomDict {
+    type Builder<'py> = CustomDictBuilder<'py>;
+
+    fn create_builder<'py>(
+        py: Python<'py>,
+        len: usize,
+        _name: &str,
+    ) -> PyResult<Self::Builder<'py>> {
+        Bound::new(
+            py,
+            CustomDict {
+                items: HashMap::with_capacity(len),
+            },
+        )
+        .map(CustomDictBuilder)
+    }
+}
+
+struct CustomDictBuilder<'py>(Bound<'py, CustomDict>);
+
+impl<'py> MappingBuilder<'py> for CustomDictBuilder<'py> {
+    fn push_item<K: ToPyObject, V: ToPyObject>(&mut self, key: K, value: V) -> PyResult<()> {
+        unsafe { self.0.downcast_unchecked::<PyMapping>() }.set_item(key, value)
+    }
+
+    fn finish(self) -> PyResult<Bound<'py, PyMapping>> {
+        Ok(unsafe { self.0.into_any().downcast_into_unchecked() })
     }
 }
 
 struct PythonizeCustomDict;
 impl PythonizeTypes for PythonizeCustomDict {
     type Map = CustomDict;
+    type NamedMap = CustomDict;
     type List = PyList;
 }
 

@@ -1,8 +1,8 @@
 use std::marker::PhantomData;
 
 use pyo3::types::{
-    IntoPyDict, PyAnyMethods, PyDict, PyDictMethods, PyList, PyMapping, PySequence, PyString,
-    PyTuple, PyTupleMethods,
+    PyAnyMethods, PyDict, PyDictMethods, PyList, PyMapping, PySequence, PyString, PyTuple,
+    PyTupleMethods,
 };
 use pyo3::{Bound, IntoPy, PyAny, PyResult, Python, ToPyObject};
 use serde::{ser, Serialize};
@@ -10,42 +10,31 @@ use serde::{ser, Serialize};
 use crate::error::{PythonizeError, Result};
 
 /// Trait for types which can represent a Python mapping
-pub trait PythonizeDictType {
-    /// Constructor
-    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>>;
+pub trait PythonizeMappingType {
+    /// Builder type for Python mappings
+    type Builder<'py>: MappingBuilder<'py>;
 
-    /// Constructor
-    fn create_mapping_with_items<
-        K: ToPyObject,
-        V: ToPyObject,
-        U: ExactSizeIterator<Item = (K, V)>,
-    >(
-        py: Python,
-        items: impl IntoIterator<Item = (K, V), IntoIter = U>,
-    ) -> PyResult<Bound<PyMapping>> {
-        let mapping = Self::create_mapping(py)?;
+    /// Create a builder for a Python mapping
+    fn create_builder(py: Python, len: Option<usize>) -> PyResult<Self::Builder<'_>>;
+}
 
-        for (key, value) in items {
-            mapping.set_item(key, value)?;
-        }
+/// Trait for types which can represent a Python mapping and have a name
+pub trait PythonizeNamedMappingType {
+    /// Builder type for Python mappings with a name
+    type Builder<'py>: MappingBuilder<'py>;
 
-        Ok(mapping)
-    }
+    /// Create a builder for a Python mapping with a name
+    fn create_builder<'py>(py: Python<'py>, len: usize, name: &str)
+        -> PyResult<Self::Builder<'py>>;
+}
 
-    /// Constructor, allows the mappings to be named
-    fn create_mapping_with_items_name<
-        'py,
-        K: ToPyObject,
-        V: ToPyObject,
-        U: ExactSizeIterator<Item = (K, V)>,
-    >(
-        py: Python<'py>,
-        name: &str,
-        items: impl IntoIterator<Item = (K, V), IntoIter = U>,
-    ) -> PyResult<Bound<'py, PyMapping>> {
-        let _name = name;
-        Self::create_mapping_with_items(py, items)
-    }
+/// Trait for types which can build a Python mapping
+pub trait MappingBuilder<'py> {
+    /// Adds the key-value item to the mapping being built
+    fn push_item<K: ToPyObject, V: ToPyObject>(&mut self, key: K, value: V) -> PyResult<()>;
+
+    /// Build the Python mapping
+    fn finish(self) -> PyResult<Bound<'py, PyMapping>>;
 }
 
 /// Trait for types which can represent a Python sequence
@@ -63,25 +52,40 @@ pub trait PythonizeListType: Sized {
 /// Custom types for serialization
 pub trait PythonizeTypes {
     /// Python map type (should be representable as python mapping)
-    type Map: PythonizeDictType;
+    type Map: PythonizeMappingType;
+    /// Python (struct-like) named map type (should be representable as python mapping)
+    type NamedMap: PythonizeNamedMappingType;
     /// Python sequence type (should be representable as python sequence)
     type List: PythonizeListType;
 }
 
-impl PythonizeDictType for PyDict {
-    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>> {
-        Ok(PyDict::new_bound(py).into_any().downcast_into().unwrap())
+impl PythonizeMappingType for PyDict {
+    type Builder<'py> = Bound<'py, Self>;
+
+    fn create_builder(py: Python, _len: Option<usize>) -> PyResult<Self::Builder<'_>> {
+        Ok(Self::new_bound(py))
+    }
+}
+
+impl PythonizeNamedMappingType for PyDict {
+    type Builder<'py> = Bound<'py, Self>;
+
+    fn create_builder<'py>(
+        py: Python<'py>,
+        _len: usize,
+        _name: &str,
+    ) -> PyResult<Self::Builder<'py>> {
+        Ok(Self::new_bound(py))
+    }
+}
+
+impl<'py> MappingBuilder<'py> for Bound<'py, PyDict> {
+    fn push_item<K: ToPyObject, V: ToPyObject>(&mut self, key: K, value: V) -> PyResult<()> {
+        self.set_item(key, value)
     }
 
-    fn create_mapping_with_items<
-        K: ToPyObject,
-        V: ToPyObject,
-        U: ExactSizeIterator<Item = (K, V)>,
-    >(
-        py: Python,
-        items: impl IntoIterator<Item = (K, V), IntoIter = U>,
-    ) -> PyResult<Bound<PyMapping>> {
-        Ok(items.into_py_dict_bound(py).into_mapping())
+    fn finish(self) -> PyResult<Bound<'py, PyMapping>> {
+        Ok(self.into_any().downcast_into().unwrap())
     }
 }
 
@@ -118,6 +122,7 @@ pub struct PythonizeDefault;
 
 impl PythonizeTypes for PythonizeDefault {
     type Map = PyDict;
+    type NamedMap = PyDict;
     type List = PyList;
 }
 
@@ -191,15 +196,14 @@ pub struct PythonStructVariantSerializer<'py, P: PythonizeTypes> {
 #[doc(hidden)]
 pub struct PythonStructDictSerializer<'py, P: PythonizeTypes> {
     py: Python<'py>,
-    name: &'static str,
-    fields: Vec<(&'static str, Bound<'py, PyAny>)>,
+    builder: <P::NamedMap as PythonizeNamedMappingType>::Builder<'py>,
     _types: PhantomData<P>,
 }
 
 #[doc(hidden)]
 pub struct PythonMapSerializer<'py, P: PythonizeTypes> {
     py: Python<'py>,
-    items: Vec<(Bound<'py, PyAny>, Bound<'py, PyAny>)>,
+    builder: <P::Map as PythonizeMappingType>::Builder<'py>,
     key: Option<Bound<'py, PyAny>>,
     _types: PhantomData<P>,
 }
@@ -320,12 +324,9 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        let m = P::Map::create_mapping_with_items_name(
-            self.py,
-            name,
-            [(variant, value.serialize(self)?)],
-        )?;
-        Ok(m.into_any())
+        let mut m = P::NamedMap::create_builder(self.py, 1, name)?;
+        m.push_item(variant, value.serialize(self)?)?;
+        Ok(m.finish()?.into_any())
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<PythonCollectionSerializer<'py, P>> {
@@ -373,7 +374,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
 
     fn serialize_map(self, len: Option<usize>) -> Result<PythonMapSerializer<'py, P>> {
         Ok(PythonMapSerializer {
-            items: Vec::with_capacity(len.unwrap_or(0)),
+            builder: P::Map::create_builder(self.py, len)?,
             key: None,
             py: self.py,
             _types: PhantomData,
@@ -387,8 +388,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     ) -> Result<PythonStructDictSerializer<'py, P>> {
         Ok(PythonStructDictSerializer {
             py: self.py,
-            name,
-            fields: Vec::with_capacity(len),
+            builder: P::NamedMap::create_builder(self.py, len, name)?,
             _types: PhantomData,
         })
     }
@@ -405,8 +405,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
             variant,
             inner: PythonStructDictSerializer {
                 py: self.py,
-                name: variant,
-                fields: Vec::with_capacity(len),
+                builder: P::NamedMap::create_builder(self.py, len, variant)?,
                 _types: PhantomData,
             },
         })
@@ -475,12 +474,9 @@ impl<'py, P: PythonizeTypes> ser::SerializeTupleVariant for PythonTupleVariantSe
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let m = P::Map::create_mapping_with_items_name(
-            self.inner.py,
-            self.name,
-            [(self.variant, ser::SerializeTuple::end(self.inner)?)],
-        )?;
-        Ok(m.into_any())
+        let mut m = P::NamedMap::create_builder(self.inner.py, 1, self.name)?;
+        m.push_item(self.variant, ser::SerializeTuple::end(self.inner)?)?;
+        Ok(m.finish()?.into_any())
     }
 }
 
@@ -500,18 +496,17 @@ impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        self.items.push((
+        self.builder.push_item(
             self.key
                 .take()
                 .expect("serialize_value should always be called after serialize_key"),
             pythonize_custom::<P, _>(self.py, value)?,
-        ));
+        )?;
         Ok(())
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let m = P::Map::create_mapping_with_items(self.py, self.items)?;
-        Ok(m.into_any())
+        Ok(self.builder.finish()?.into_any())
     }
 }
 
@@ -523,14 +518,13 @@ impl<'py, P: PythonizeTypes> ser::SerializeStruct for PythonStructDictSerializer
     where
         T: ?Sized + Serialize,
     {
-        self.fields
-            .push((key, pythonize_custom::<P, _>(self.py, value)?));
+        self.builder
+            .push_item(key, pythonize_custom::<P, _>(self.py, value)?)?;
         Ok(())
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let m = P::Map::create_mapping_with_items_name(self.py, self.name, self.fields)?;
-        Ok(m.into_any())
+        Ok(self.builder.finish()?.into_any())
     }
 }
 
@@ -543,20 +537,16 @@ impl<'py, P: PythonizeTypes> ser::SerializeStructVariant for PythonStructVariant
         T: ?Sized + Serialize,
     {
         self.inner
-            .fields
-            .push((key, pythonize_custom::<P, _>(self.inner.py, value)?));
+            .builder
+            .push_item(key, pythonize_custom::<P, _>(self.inner.py, value)?)?;
         Ok(())
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let v = P::Map::create_mapping_with_items_name(
-            self.inner.py,
-            self.inner.name,
-            self.inner.fields,
-        )?;
-        let m =
-            P::Map::create_mapping_with_items_name(self.inner.py, self.name, [(self.variant, v)])?;
-        Ok(m.into_any())
+        let v = self.inner.builder.finish()?;
+        let mut m = P::NamedMap::create_builder(self.inner.py, 1, self.name)?;
+        m.push_item(self.variant, v)?;
+        Ok(m.finish()?.into_any())
     }
 }
 

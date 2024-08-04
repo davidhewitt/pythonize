@@ -45,6 +45,6 @@ pub use crate::de::depythonize_bound;
 pub use crate::de::{depythonize, Depythonizer};
 pub use crate::error::{PythonizeError, Result};
 pub use crate::ser::{
-    pythonize, pythonize_custom, PythonizeDefault, PythonizeDictType, PythonizeListType,
-    PythonizeTypes, Pythonizer,
+    pythonize, pythonize_custom, MappingBuilder, PythonizeDefault, PythonizeListType,
+    PythonizeMappingType, PythonizeNamedMappingType, PythonizeTypes, Pythonizer,
 };

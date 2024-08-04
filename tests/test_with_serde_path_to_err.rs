@@ -15,6 +15,7 @@ struct Root<T> {
 
 impl<T> PythonizeTypes for Root<T> {
     type Map = PyDict;
+    type NamedMap = PyDict;
     type List = PyList;
 }
 
