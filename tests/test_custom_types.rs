@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use pyo3::{
     exceptions::{PyIndexError, PyKeyError},
     prelude::*,
-    types::{PyDict, PyList, PyMapping, PySequence},
+    types::{PyDict, PyMapping, PySequence, PyTuple},
 };
 use pythonize::{
     depythonize, pythonize_custom, PythonizeListType, PythonizeMappingType, PythonizeTypes,
@@ -134,7 +134,7 @@ struct PythonizeCustomDict;
 impl PythonizeTypes for PythonizeCustomDict {
     type Map = CustomDict;
     type NamedMap = PythonizeUnnamedMappingWrapper<CustomDict>;
-    type List = PyList;
+    type List = PyTuple;
 }
 
 #[test]
@@ -148,6 +148,19 @@ fn test_custom_dict() {
 
         let deserialized: Value = depythonize(&serialized).unwrap();
         assert_eq!(deserialized, json!({ "hello": 1, "world": 2 }));
+    })
+}
+
+#[test]
+fn test_tuple() {
+    Python::with_gil(|py| {
+        PyMapping::register::<CustomDict>(py).unwrap();
+        let serialized =
+            pythonize_custom::<PythonizeCustomDict, _>(py, &json!([1, 2, 3, 4])).unwrap();
+        assert!(serialized.is_instance_of::<PyTuple>());
+
+        let deserialized: Value = depythonize(&serialized).unwrap();
+        assert_eq!(deserialized, json!([1, 2, 3, 4]));
     })
 }
 
