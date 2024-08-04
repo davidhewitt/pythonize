@@ -10,6 +10,8 @@
 - `Depythonizer` now contains a `&Bound` and so has an extra lifetime `'bound`
 - `Depythonizer::from_object()` now takes a `&Bound` and is no longer deprecated
 - Fix overflow error attempting to depythonize `u64` values greater than `i64::MAX` to types like `serde_json::Value`
+- Implement `PythonizeListType` for `PyTuple`
+- Support deserializing enums from any `PyMapping` instead of just `PyDict`
 - Support serializing struct-like types to named mappings using `PythonizeTypes::NamedMap`
 
 ## 0.21.1 - 2024-04-02
