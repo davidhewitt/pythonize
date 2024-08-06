@@ -7,7 +7,7 @@ use pyo3::{
 };
 use pythonize::{
     depythonize, pythonize_custom, PythonizeListType, PythonizeMappingType, PythonizeTypes,
-    PythonizeUnnamedMappingWrapper, Pythonizer,
+    PythonizeUnnamedMappingAdapter, Pythonizer,
 };
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -58,7 +58,7 @@ impl PythonizeListType for CustomList {
 struct PythonizeCustomList;
 impl<'py> PythonizeTypes<'py> for PythonizeCustomList {
     type Map = PyDict;
-    type NamedMap = PythonizeUnnamedMappingWrapper<'py, PyDict>;
+    type NamedMap = PythonizeUnnamedMappingAdapter<'py, PyDict>;
     type List = CustomList;
 }
 
@@ -133,7 +133,7 @@ impl<'py> PythonizeMappingType<'py> for CustomDict {
 struct PythonizeCustomDict;
 impl<'py> PythonizeTypes<'py> for PythonizeCustomDict {
     type Map = CustomDict;
-    type NamedMap = PythonizeUnnamedMappingWrapper<'py, CustomDict>;
+    type NamedMap = PythonizeUnnamedMappingAdapter<'py, CustomDict>;
     type List = PyTuple;
 }
 

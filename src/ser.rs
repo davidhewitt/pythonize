@@ -92,12 +92,19 @@ impl<'py> PythonizeMappingType<'py> for PyDict {
     }
 }
 
-pub struct PythonizeUnnamedMappingWrapper<'py, T: PythonizeMappingType<'py>> {
+/// Adapter type to use an unnamed mapping type, i.e. one that implements
+/// [`PythonizeMappingType`], as a named mapping type, i.e. one that implements
+/// [`PythonizeNamedMappingType`]. The adapter simply drops the provided name.
+///
+/// This adapter is commonly applied to use the same unnamed mapping type for
+/// both [`PythonizeTypes::Map`] and [`PythonizeTypes::NamedMap`] while only
+/// implementing [`PythonizeMappingType`].
+pub struct PythonizeUnnamedMappingAdapter<'py, T: PythonizeMappingType<'py>> {
     unnamed: T,
     _marker: PhantomData<&'py ()>,
 }
 
-impl<'py, T: PythonizeMappingType<'py>> PythonizeUnnamedMappingWrapper<'py, T> {
+impl<'py, T: PythonizeMappingType<'py>> PythonizeUnnamedMappingAdapter<'py, T> {
     #[must_use]
     pub fn new(unnamed: T) -> Self {
         Self {
@@ -112,14 +119,14 @@ impl<'py, T: PythonizeMappingType<'py>> PythonizeUnnamedMappingWrapper<'py, T> {
     }
 }
 
-impl<'py, T: PythonizeMappingType<'py>> From<T> for PythonizeUnnamedMappingWrapper<'py, T> {
+impl<'py, T: PythonizeMappingType<'py>> From<T> for PythonizeUnnamedMappingAdapter<'py, T> {
     fn from(value: T) -> Self {
         Self::new(value)
     }
 }
 
 impl<'py, T: PythonizeMappingType<'py>> PythonizeNamedMappingType<'py>
-    for PythonizeUnnamedMappingWrapper<'py, T>
+    for PythonizeUnnamedMappingAdapter<'py, T>
 {
     type Builder = <T as PythonizeMappingType<'py>>::Builder;
 
@@ -173,7 +180,7 @@ pub struct PythonizeDefault;
 
 impl<'py> PythonizeTypes<'py> for PythonizeDefault {
     type Map = PyDict;
-    type NamedMap = PythonizeUnnamedMappingWrapper<'py, PyDict>;
+    type NamedMap = PythonizeUnnamedMappingAdapter<'py, PyDict>;
     type List = PyList;
 }
 
