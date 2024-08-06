@@ -56,9 +56,9 @@ impl PythonizeListType for CustomList {
 }
 
 struct PythonizeCustomList;
-impl PythonizeTypes for PythonizeCustomList {
+impl<'py> PythonizeTypes<'py> for PythonizeCustomList {
     type Map = PyDict;
-    type NamedMap = PythonizeUnnamedMappingWrapper<PyDict>;
+    type NamedMap = PythonizeUnnamedMappingWrapper<'py, PyDict>;
     type List = CustomList;
 }
 
@@ -105,10 +105,10 @@ impl CustomDict {
     }
 }
 
-impl PythonizeMappingType for CustomDict {
-    type Builder<'py> = Bound<'py, CustomDict>;
+impl<'py> PythonizeMappingType<'py> for CustomDict {
+    type Builder = Bound<'py, CustomDict>;
 
-    fn builder<'py>(py: Python<'py>, len: Option<usize>) -> PyResult<Self::Builder<'py>> {
+    fn builder(py: Python<'py>, len: Option<usize>) -> PyResult<Self::Builder> {
         Bound::new(
             py,
             CustomDict {
@@ -117,23 +117,23 @@ impl PythonizeMappingType for CustomDict {
         )
     }
 
-    fn push_item<'py, K: ToPyObject, V: ToPyObject>(
-        builder: &mut Self::Builder<'py>,
-        key: K,
-        value: V,
+    fn push_item(
+        builder: &mut Self::Builder,
+        key: Bound<'py, PyAny>,
+        value: Bound<'py, PyAny>,
     ) -> PyResult<()> {
         unsafe { builder.downcast_unchecked::<PyMapping>() }.set_item(key, value)
     }
 
-    fn finish<'py>(builder: Self::Builder<'py>) -> PyResult<Bound<'py, PyMapping>> {
+    fn finish(builder: Self::Builder) -> PyResult<Bound<'py, PyMapping>> {
         Ok(unsafe { builder.into_any().downcast_into_unchecked() })
     }
 }
 
 struct PythonizeCustomDict;
-impl PythonizeTypes for PythonizeCustomDict {
+impl<'py> PythonizeTypes<'py> for PythonizeCustomDict {
     type Map = CustomDict;
-    type NamedMap = PythonizeUnnamedMappingWrapper<CustomDict>;
+    type NamedMap = PythonizeUnnamedMappingWrapper<'py, CustomDict>;
     type List = PyTuple;
 }
 
