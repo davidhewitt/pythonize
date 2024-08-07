@@ -100,10 +100,9 @@ impl<'py> PythonizeMappingType<'py> for PyDict {
 /// both [`PythonizeTypes::Map`] and [`PythonizeTypes::NamedMap`] while only
 /// implementing [`PythonizeMappingType`].
 pub struct PythonizeUnnamedMappingAdapter<'py, T: PythonizeMappingType<'py>> {
-    unnamed: T,
+    _unnamed: T,
     _marker: PhantomData<&'py ()>,
 }
-
 
 impl<'py, T: PythonizeMappingType<'py>> PythonizeNamedMappingType<'py>
     for PythonizeUnnamedMappingAdapter<'py, T>
