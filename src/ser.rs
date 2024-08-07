@@ -104,26 +104,6 @@ pub struct PythonizeUnnamedMappingAdapter<'py, T: PythonizeMappingType<'py>> {
     _marker: PhantomData<&'py ()>,
 }
 
-impl<'py, T: PythonizeMappingType<'py>> PythonizeUnnamedMappingAdapter<'py, T> {
-    #[must_use]
-    pub fn new(unnamed: T) -> Self {
-        Self {
-            unnamed,
-            _marker: PhantomData::<&'py ()>,
-        }
-    }
-
-    #[must_use]
-    pub fn into_inner(self) -> T {
-        self.unnamed
-    }
-}
-
-impl<'py, T: PythonizeMappingType<'py>> From<T> for PythonizeUnnamedMappingAdapter<'py, T> {
-    fn from(value: T) -> Self {
-        Self::new(value)
-    }
-}
 
 impl<'py, T: PythonizeMappingType<'py>> PythonizeNamedMappingType<'py>
     for PythonizeUnnamedMappingAdapter<'py, T>
