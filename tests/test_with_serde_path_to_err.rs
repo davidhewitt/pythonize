@@ -4,7 +4,7 @@ use pyo3::{
     prelude::*,
     types::{PyDict, PyList},
 };
-use pythonize::PythonizeTypes;
+use pythonize::{PythonizeTypes, PythonizeUnnamedMappingAdapter};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, PartialEq, Eq)]
@@ -13,8 +13,9 @@ struct Root<T> {
     root_map: BTreeMap<String, Nested<T>>,
 }
 
-impl<T> PythonizeTypes for Root<T> {
+impl<'py, T> PythonizeTypes<'py> for Root<T> {
     type Map = PyDict;
+    type NamedMap = PythonizeUnnamedMappingAdapter<'py, PyDict>;
     type List = PyList;
 }
 

@@ -1,15 +1,52 @@
 use std::marker::PhantomData;
 
-use pyo3::types::{PyAnyMethods, PyDict, PyList, PyMapping, PySequence, PyString, PyTuple};
+use pyo3::types::{
+    PyAnyMethods, PyDict, PyDictMethods, PyList, PyMapping, PySequence, PyString, PyTuple,
+    PyTupleMethods,
+};
 use pyo3::{Bound, IntoPy, PyAny, PyResult, Python, ToPyObject};
 use serde::{ser, Serialize};
 
 use crate::error::{PythonizeError, Result};
 
+// TODO: move 'py lifetime into builder once GATs are available in MSRV
 /// Trait for types which can represent a Python mapping
-pub trait PythonizeDictType {
-    /// Constructor
-    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>>;
+pub trait PythonizeMappingType<'py> {
+    /// Builder type for Python mappings
+    type Builder;
+
+    /// Create a builder for a Python mapping
+    fn builder(py: Python<'py>, len: Option<usize>) -> PyResult<Self::Builder>;
+
+    /// Adds the key-value item to the mapping being built
+    fn push_item(
+        builder: &mut Self::Builder,
+        key: Bound<'py, PyAny>,
+        value: Bound<'py, PyAny>,
+    ) -> PyResult<()>;
+
+    /// Build the Python mapping
+    fn finish(builder: Self::Builder) -> PyResult<Bound<'py, PyMapping>>;
+}
+
+// TODO: move 'py lifetime into builder once GATs are available in MSRV
+/// Trait for types which can represent a Python mapping and have a name
+pub trait PythonizeNamedMappingType<'py> {
+    /// Builder type for Python mappings with a name
+    type Builder;
+
+    /// Create a builder for a Python mapping with a name
+    fn builder(py: Python<'py>, len: usize, name: &'static str) -> PyResult<Self::Builder>;
+
+    /// Adds the field to the named mapping being built
+    fn push_field(
+        builder: &mut Self::Builder,
+        name: Bound<'py, PyString>,
+        value: Bound<'py, PyAny>,
+    ) -> PyResult<()>;
+
+    /// Build the Python mapping
+    fn finish(builder: Self::Builder) -> PyResult<Bound<'py, PyMapping>>;
 }
 
 /// Trait for types which can represent a Python sequence
@@ -24,17 +61,68 @@ pub trait PythonizeListType: Sized {
         U: ExactSizeIterator<Item = T>;
 }
 
+// TODO: remove 'py lifetime once GATs are available in MSRV
 /// Custom types for serialization
-pub trait PythonizeTypes {
+pub trait PythonizeTypes<'py> {
     /// Python map type (should be representable as python mapping)
-    type Map: PythonizeDictType;
+    type Map: PythonizeMappingType<'py>;
+    /// Python (struct-like) named map type (should be representable as python mapping)
+    type NamedMap: PythonizeNamedMappingType<'py>;
     /// Python sequence type (should be representable as python sequence)
     type List: PythonizeListType;
 }
 
-impl PythonizeDictType for PyDict {
-    fn create_mapping(py: Python) -> PyResult<Bound<PyMapping>> {
-        Ok(PyDict::new_bound(py).into_any().downcast_into().unwrap())
+impl<'py> PythonizeMappingType<'py> for PyDict {
+    type Builder = Bound<'py, Self>;
+
+    fn builder(py: Python<'py>, _len: Option<usize>) -> PyResult<Self::Builder> {
+        Ok(Self::new_bound(py))
+    }
+
+    fn push_item(
+        builder: &mut Self::Builder,
+        key: Bound<'py, PyAny>,
+        value: Bound<'py, PyAny>,
+    ) -> PyResult<()> {
+        builder.set_item(key, value)
+    }
+
+    fn finish(builder: Self::Builder) -> PyResult<Bound<'py, PyMapping>> {
+        Ok(builder.into_mapping())
+    }
+}
+
+/// Adapter type to use an unnamed mapping type, i.e. one that implements
+/// [`PythonizeMappingType`], as a named mapping type, i.e. one that implements
+/// [`PythonizeNamedMappingType`]. The adapter simply drops the provided name.
+///
+/// This adapter is commonly applied to use the same unnamed mapping type for
+/// both [`PythonizeTypes::Map`] and [`PythonizeTypes::NamedMap`] while only
+/// implementing [`PythonizeMappingType`].
+pub struct PythonizeUnnamedMappingAdapter<'py, T: PythonizeMappingType<'py>> {
+    _unnamed: T,
+    _marker: PhantomData<&'py ()>,
+}
+
+impl<'py, T: PythonizeMappingType<'py>> PythonizeNamedMappingType<'py>
+    for PythonizeUnnamedMappingAdapter<'py, T>
+{
+    type Builder = <T as PythonizeMappingType<'py>>::Builder;
+
+    fn builder(py: Python<'py>, len: usize, _name: &'static str) -> PyResult<Self::Builder> {
+        <T as PythonizeMappingType>::builder(py, Some(len))
+    }
+
+    fn push_field(
+        builder: &mut Self::Builder,
+        name: Bound<'py, PyString>,
+        value: Bound<'py, PyAny>,
+    ) -> PyResult<()> {
+        <T as PythonizeMappingType>::push_item(builder, name.into_any(), value)
+    }
+
+    fn finish(builder: Self::Builder) -> PyResult<Bound<'py, PyMapping>> {
+        <T as PythonizeMappingType>::finish(builder)
     }
 }
 
@@ -54,10 +142,24 @@ impl PythonizeListType for PyList {
     }
 }
 
+impl PythonizeListType for PyTuple {
+    fn create_sequence<T, U>(
+        py: Python,
+        elements: impl IntoIterator<Item = T, IntoIter = U>,
+    ) -> PyResult<Bound<PySequence>>
+    where
+        T: ToPyObject,
+        U: ExactSizeIterator<Item = T>,
+    {
+        Ok(PyTuple::new_bound(py, elements).into_sequence())
+    }
+}
+
 pub struct PythonizeDefault;
 
-impl PythonizeTypes for PythonizeDefault {
+impl<'py> PythonizeTypes<'py> for PythonizeDefault {
     type Map = PyDict;
+    type NamedMap = PythonizeUnnamedMappingAdapter<'py, PyDict>;
     type List = PyList;
 }
 
@@ -74,7 +176,7 @@ where
 pub fn pythonize_custom<'py, P, T>(py: Python<'py>, value: &T) -> Result<Bound<'py, PyAny>>
 where
     T: ?Sized + Serialize,
-    P: PythonizeTypes,
+    P: PythonizeTypes<'py>,
 {
     value.serialize(Pythonizer::custom::<P>(py))
 }
@@ -116,32 +218,34 @@ pub struct PythonCollectionSerializer<'py, P> {
 
 #[doc(hidden)]
 pub struct PythonTupleVariantSerializer<'py, P> {
+    name: &'static str,
     variant: &'static str,
     inner: PythonCollectionSerializer<'py, P>,
 }
 
 #[doc(hidden)]
-pub struct PythonStructVariantSerializer<'py, P: PythonizeTypes> {
+pub struct PythonStructVariantSerializer<'py, P: PythonizeTypes<'py>> {
+    name: &'static str,
     variant: &'static str,
-    inner: PythonDictSerializer<'py, P>,
+    inner: PythonStructDictSerializer<'py, P>,
 }
 
 #[doc(hidden)]
-pub struct PythonDictSerializer<'py, P: PythonizeTypes> {
+pub struct PythonStructDictSerializer<'py, P: PythonizeTypes<'py>> {
     py: Python<'py>,
-    dict: Bound<'py, PyMapping>,
+    builder: <P::NamedMap as PythonizeNamedMappingType<'py>>::Builder,
     _types: PhantomData<P>,
 }
 
 #[doc(hidden)]
-pub struct PythonMapSerializer<'py, P: PythonizeTypes> {
+pub struct PythonMapSerializer<'py, P: PythonizeTypes<'py>> {
     py: Python<'py>,
-    map: Bound<'py, PyMapping>,
+    builder: <P::Map as PythonizeMappingType<'py>>::Builder,
     key: Option<Bound<'py, PyAny>>,
     _types: PhantomData<P>,
 }
 
-impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::Serializer for Pythonizer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
     type SerializeSeq = PythonCollectionSerializer<'py, P>;
@@ -149,7 +253,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     type SerializeTupleStruct = PythonCollectionSerializer<'py, P>;
     type SerializeTupleVariant = PythonTupleVariantSerializer<'py, P>;
     type SerializeMap = PythonMapSerializer<'py, P>;
-    type SerializeStruct = PythonDictSerializer<'py, P>;
+    type SerializeStruct = PythonStructDictSerializer<'py, P>;
     type SerializeStructVariant = PythonStructVariantSerializer<'py, P>;
 
     fn serialize_bool(self, v: bool) -> Result<Bound<'py, PyAny>> {
@@ -249,7 +353,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
 
     fn serialize_newtype_variant<T>(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
         variant: &'static str,
         value: &T,
@@ -257,9 +361,13 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        let d = PyDict::new_bound(self.py);
-        d.set_item(variant, value.serialize(self)?)?;
-        Ok(d.into_any())
+        let mut m = P::NamedMap::builder(self.py, 1, name)?;
+        P::NamedMap::push_field(
+            &mut m,
+            PyString::new_bound(self.py, variant),
+            value.serialize(self)?,
+        )?;
+        Ok(P::NamedMap::finish(m)?.into_any())
     }
 
     fn serialize_seq(self, len: Option<usize>) -> Result<PythonCollectionSerializer<'py, P>> {
@@ -292,18 +400,22 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
 
     fn serialize_tuple_variant(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
         variant: &'static str,
         len: usize,
     ) -> Result<PythonTupleVariantSerializer<'py, P>> {
         let inner = self.serialize_tuple(len)?;
-        Ok(PythonTupleVariantSerializer { variant, inner })
+        Ok(PythonTupleVariantSerializer {
+            name,
+            variant,
+            inner,
+        })
     }
 
-    fn serialize_map(self, _len: Option<usize>) -> Result<PythonMapSerializer<'py, P>> {
+    fn serialize_map(self, len: Option<usize>) -> Result<PythonMapSerializer<'py, P>> {
         Ok(PythonMapSerializer {
-            map: P::Map::create_mapping(self.py)?,
+            builder: P::Map::builder(self.py, len)?,
             key: None,
             py: self.py,
             _types: PhantomData,
@@ -312,35 +424,36 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
 
     fn serialize_struct(
         self,
-        _name: &'static str,
-        _len: usize,
-    ) -> Result<PythonDictSerializer<'py, P>> {
-        Ok(PythonDictSerializer {
-            dict: P::Map::create_mapping(self.py)?,
+        name: &'static str,
+        len: usize,
+    ) -> Result<PythonStructDictSerializer<'py, P>> {
+        Ok(PythonStructDictSerializer {
             py: self.py,
+            builder: P::NamedMap::builder(self.py, len, name)?,
             _types: PhantomData,
         })
     }
 
     fn serialize_struct_variant(
         self,
-        _name: &'static str,
+        name: &'static str,
         _variant_index: u32,
         variant: &'static str,
-        _len: usize,
+        len: usize,
     ) -> Result<PythonStructVariantSerializer<'py, P>> {
         Ok(PythonStructVariantSerializer {
+            name,
             variant,
-            inner: PythonDictSerializer {
-                dict: P::Map::create_mapping(self.py)?,
+            inner: PythonStructDictSerializer {
                 py: self.py,
+                builder: P::NamedMap::builder(self.py, len, variant)?,
                 _types: PhantomData,
             },
         })
     }
 }
 
-impl<'py, P: PythonizeTypes> ser::SerializeSeq for PythonCollectionSerializer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeSeq for PythonCollectionSerializer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
 
@@ -358,7 +471,7 @@ impl<'py, P: PythonizeTypes> ser::SerializeSeq for PythonCollectionSerializer<'p
     }
 }
 
-impl<'py, P: PythonizeTypes> ser::SerializeTuple for PythonCollectionSerializer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeTuple for PythonCollectionSerializer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
 
@@ -374,7 +487,7 @@ impl<'py, P: PythonizeTypes> ser::SerializeTuple for PythonCollectionSerializer<
     }
 }
 
-impl<'py, P: PythonizeTypes> ser::SerializeTupleStruct for PythonCollectionSerializer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeTupleStruct for PythonCollectionSerializer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
 
@@ -390,7 +503,9 @@ impl<'py, P: PythonizeTypes> ser::SerializeTupleStruct for PythonCollectionSeria
     }
 }
 
-impl<'py, P: PythonizeTypes> ser::SerializeTupleVariant for PythonTupleVariantSerializer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeTupleVariant
+    for PythonTupleVariantSerializer<'py, P>
+{
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
 
@@ -402,13 +517,17 @@ impl<'py, P: PythonizeTypes> ser::SerializeTupleVariant for PythonTupleVariantSe
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let d = PyDict::new_bound(self.inner.py);
-        d.set_item(self.variant, ser::SerializeTuple::end(self.inner)?)?;
-        Ok(d.into_any())
+        let mut m = P::NamedMap::builder(self.inner.py, 1, self.name)?;
+        P::NamedMap::push_field(
+            &mut m,
+            PyString::new_bound(self.inner.py, self.variant),
+            ser::SerializeTuple::end(self.inner)?,
+        )?;
+        Ok(P::NamedMap::finish(m)?.into_any())
     }
 }
 
-impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeMap for PythonMapSerializer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
 
@@ -424,7 +543,8 @@ impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
     where
         T: ?Sized + Serialize,
     {
-        self.map.set_item(
+        P::Map::push_item(
+            &mut self.builder,
             self.key
                 .take()
                 .expect("serialize_value should always be called after serialize_key"),
@@ -434,11 +554,11 @@ impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        Ok(self.map.into_any())
+        Ok(P::Map::finish(self.builder)?.into_any())
     }
 }
 
-impl<'py, P: PythonizeTypes> ser::SerializeStruct for PythonDictSerializer<'py, P> {
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeStruct for PythonStructDictSerializer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
 
@@ -446,34 +566,46 @@ impl<'py, P: PythonizeTypes> ser::SerializeStruct for PythonDictSerializer<'py, 
     where
         T: ?Sized + Serialize,
     {
-        Ok(self
-            .dict
-            .set_item(key, pythonize_custom::<P, _>(self.py, value)?)?)
-    }
-
-    fn end(self) -> Result<Bound<'py, PyAny>> {
-        Ok(self.dict.into_any())
-    }
-}
-
-impl<'py, P: PythonizeTypes> ser::SerializeStructVariant for PythonStructVariantSerializer<'py, P> {
-    type Ok = Bound<'py, PyAny>;
-    type Error = PythonizeError;
-
-    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
-    where
-        T: ?Sized + Serialize,
-    {
-        self.inner
-            .dict
-            .set_item(key, pythonize_custom::<P, _>(self.inner.py, value)?)?;
+        P::NamedMap::push_field(
+            &mut self.builder,
+            PyString::new_bound(self.py, key),
+            pythonize_custom::<P, _>(self.py, value)?,
+        )?;
         Ok(())
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        let d = PyDict::new_bound(self.inner.py);
-        d.set_item(self.variant, self.inner.dict)?;
-        Ok(d.into_any())
+        Ok(P::NamedMap::finish(self.builder)?.into_any())
+    }
+}
+
+impl<'py, P: PythonizeTypes<'py>> ser::SerializeStructVariant
+    for PythonStructVariantSerializer<'py, P>
+{
+    type Ok = Bound<'py, PyAny>;
+    type Error = PythonizeError;
+
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
+        P::NamedMap::push_field(
+            &mut self.inner.builder,
+            PyString::new_bound(self.inner.py, key),
+            pythonize_custom::<P, _>(self.inner.py, value)?,
+        )?;
+        Ok(())
+    }
+
+    fn end(self) -> Result<Bound<'py, PyAny>> {
+        let v = P::NamedMap::finish(self.inner.builder)?;
+        let mut m = P::NamedMap::builder(self.inner.py, 1, self.name)?;
+        P::NamedMap::push_field(
+            &mut m,
+            PyString::new_bound(self.inner.py, self.variant),
+            v.into_any(),
+        )?;
+        Ok(P::NamedMap::finish(m)?.into_any())
     }
 }
 
