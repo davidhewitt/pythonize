@@ -2,7 +2,7 @@ use pyo3::{types::*, Bound};
 use serde::de::{self, DeserializeOwned, IntoDeserializer};
 use serde::Deserialize;
 
-use crate::error::{PythonizeError, Result};
+use crate::error::{ErrorImpl, PythonizeError, Result};
 
 /// Attempt to convert a Python object to an instance of `T`
 pub fn depythonize<'a, 'py, T>(obj: &'a Bound<'py, PyAny>) -> Result<T>
@@ -41,6 +41,19 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
                 Err(PythonizeError::incorrect_sequence_length(expected, len))
             }
             _ => Ok(PySequenceAccess::new(seq, len)),
+        }
+    }
+
+    fn set_access(&self) -> Result<PySetAsSequence<'py>> {
+        match self.input.downcast::<PySet>() {
+            Ok(set) => Ok(PySetAsSequence::from_set(&set)),
+            Err(e) => {
+                if let Ok(f) = self.input.downcast::<PyFrozenSet>() {
+                    Ok(PySetAsSequence::from_frozenset(&f))
+                } else {
+                    Err(e.into())
+                }
+            }
         }
     }
 
@@ -122,10 +135,9 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             self.deserialize_bytes(visitor)
         } else if obj.is_instance_of::<PyFloat>() {
             self.deserialize_f64(visitor)
-        } else if obj.is_instance_of::<PyFrozenSet>()
-            || obj.is_instance_of::<PySet>()
-            || obj.downcast::<PySequence>().is_ok()
-        {
+        } else if obj.is_instance_of::<PyFrozenSet>() || obj.is_instance_of::<PySet>() {
+            self.deserialize_seq(visitor)
+        } else if obj.downcast::<PySequence>().is_ok() {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
@@ -238,7 +250,18 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.sequence_access(None)?)
+        match self.sequence_access(None) {
+            Ok(seq) => visitor.visit_seq(seq),
+            Err(e) => {
+                // we allow sets to be deserialized as sequences, so try that
+                if matches!(*e.inner, ErrorImpl::UnexpectedType(_)) {
+                    if let Ok(set) = self.set_access() {
+                        return visitor.visit_seq(set);
+                    }
+                }
+                Err(e)
+            }
+        }
     }
 
     fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
@@ -353,6 +376,40 @@ impl<'de> de::SeqAccess<'de> for PySequenceAccess<'_, '_> {
                 .map(Some)
         } else {
             Ok(None)
+        }
+    }
+}
+
+struct PySetAsSequence<'py> {
+    iter: Bound<'py, PyIterator>,
+}
+
+impl<'py> PySetAsSequence<'py> {
+    fn from_set(set: &Bound<'py, PySet>) -> Self {
+        Self {
+            iter: PyIterator::from_bound_object(&set).expect("set is always iterable"),
+        }
+    }
+
+    fn from_frozenset(set: &Bound<'py, PyFrozenSet>) -> Self {
+        Self {
+            iter: PyIterator::from_bound_object(&set).expect("frozenset is always iterable"),
+        }
+    }
+}
+
+impl<'de> de::SeqAccess<'de> for PySetAsSequence<'_> {
+    type Error = PythonizeError;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        match self.iter.next() {
+            Some(item) => seed
+                .deserialize(&mut Depythonizer::from_object(&item?))
+                .map(Some),
+            None => Ok(None),
         }
     }
 }
@@ -603,6 +660,22 @@ mod test {
         let expected = ("foo".to_string(), 5);
         let expected_json = json!(["foo", 5]);
         let code = "['foo', 5]";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_vec_from_pyset() {
+        let expected = vec!["foo".to_string()];
+        let expected_json = json!(["foo"]);
+        let code = "{'foo'}";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_vec_from_pyfrozenset() {
+        let expected = vec!["foo".to_string()];
+        let expected_json = json!(["foo"]);
+        let code = "frozenset({'foo'})";
         test_de(code, &expected, &expected_json);
     }
 
