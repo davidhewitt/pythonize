@@ -793,4 +793,39 @@ mod test {
             let _: i128 = depythonize(&i128::MIN.into_py(py).into_bound(py)).unwrap();
         });
     }
+
+    #[test]
+    fn test_deserialize_bytes() {
+        Python::with_gil(|py| {
+            let obj = PyBytes::new_bound(py, "hello".as_bytes());
+            let actual: Vec<u8> = depythonize(&obj).unwrap();
+            assert_eq!(actual, b"hello");
+        })
+    }
+
+    #[test]
+    fn test_char() {
+        let expected = 'a';
+        let expected_json = json!("a");
+        let code = "'a'";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_unknown_type() {
+        Python::with_gil(|py| {
+            let obj = py
+                .import_bound("decimal")
+                .unwrap()
+                .getattr("Decimal")
+                .unwrap()
+                .call0()
+                .unwrap();
+            let err = depythonize::<serde_json::Value>(&obj).unwrap_err();
+            assert!(matches!(
+                *err.inner,
+                ErrorImpl::UnsupportedType(name) if name == "Decimal"
+            ));
+        });
+    }
 }
