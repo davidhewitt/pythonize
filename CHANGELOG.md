@@ -22,7 +22,7 @@
 
 ### Fixed
 - Fix overflow error attempting to depythonize `u64` values greater than `i64::MAX` to types like `serde_json::Value`
-- Fix deserializing `set` and `frozenset` into Rust sequences
+- Fix deserializing `set` and `frozenset` into Rust homogeneous containers
 
 ## 0.21.1 - 2024-04-02
 

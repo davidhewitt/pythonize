@@ -2,7 +2,7 @@ use pyo3::{types::*, Bound};
 use serde::de::{self, DeserializeOwned, IntoDeserializer};
 use serde::Deserialize;
 
-use crate::error::{PythonizeError, Result};
+use crate::error::{ErrorImpl, PythonizeError, Result};
 
 /// Attempt to convert a Python object to an instance of `T`
 pub fn depythonize<'a, 'py, T>(obj: &'a Bound<'py, PyAny>) -> Result<T>
@@ -32,28 +32,28 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
         Depythonizer { input }
     }
 
-    fn sequence_access(&self, expected_len: Option<usize>) -> Result<SequenceAccess<'a, 'py>> {
-        let seq = match self.input.downcast::<PySequence>() {
-            Ok(seq) => seq,
-            Err(e) => {
-                return if let Ok(set) = self.input.downcast::<PySet>() {
-                    Ok(SequenceAccess::Set(PySetAsSequence::from_set(&set)))
-                } else if let Ok(frozenset) = self.input.downcast::<PyFrozenSet>() {
-                    Ok(SequenceAccess::Set(PySetAsSequence::from_frozenset(
-                        &frozenset,
-                    )))
-                } else {
-                    Err(e.into())
-                }
-            }
-        };
+    fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'a, 'py>> {
+        let seq = self.input.downcast::<PySequence>()?;
         let len = self.input.len()?;
 
         match expected_len {
             Some(expected) if expected != len => {
                 Err(PythonizeError::incorrect_sequence_length(expected, len))
             }
-            _ => Ok(SequenceAccess::Sequence(PySequenceAccess::new(seq, len))),
+            _ => Ok(PySequenceAccess::new(seq, len)),
+        }
+    }
+
+    fn set_access(&self) -> Result<PySetAsSequence<'py>> {
+        match self.input.downcast::<PySet>() {
+            Ok(set) => Ok(PySetAsSequence::from_set(&set)),
+            Err(e) => {
+                if let Ok(f) = self.input.downcast::<PyFrozenSet>() {
+                    Ok(PySetAsSequence::from_frozenset(&f))
+                } else {
+                    Err(e.into())
+                }
+            }
         }
     }
 
@@ -135,10 +135,9 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             self.deserialize_bytes(visitor)
         } else if obj.is_instance_of::<PyFloat>() {
             self.deserialize_f64(visitor)
-        } else if obj.is_instance_of::<PyFrozenSet>()
-            || obj.is_instance_of::<PySet>()
-            || obj.downcast::<PySequence>().is_ok()
-        {
+        } else if obj.is_instance_of::<PyFrozenSet>() || obj.is_instance_of::<PySet>() {
+            self.deserialize_seq(visitor)
+        } else if obj.downcast::<PySequence>().is_ok() {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.downcast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
@@ -251,9 +250,17 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        match self.sequence_access(None)? {
-            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
-            SequenceAccess::Set(set) => visitor.visit_seq(set),
+        match self.sequence_access(None) {
+            Ok(seq) => visitor.visit_seq(seq),
+            Err(e) => {
+                // we allow sets to be deserialized as sequences, so try that
+                if matches!(*e.inner, ErrorImpl::UnexpectedType(_)) {
+                    if let Ok(set) = self.set_access() {
+                        return visitor.visit_seq(set);
+                    }
+                }
+                Err(e)
+            }
         }
     }
 
@@ -261,10 +268,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        match self.sequence_access(Some(len))? {
-            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
-            SequenceAccess::Set(set) => visitor.visit_seq(set),
-        }
+        visitor.visit_seq(self.sequence_access(Some(len))?)
     }
 
     fn deserialize_tuple_struct<V>(
@@ -276,10 +280,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        match self.sequence_access(Some(len))? {
-            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
-            SequenceAccess::Set(set) => visitor.visit_seq(set),
-        }
+        visitor.visit_seq(self.sequence_access(Some(len))?)
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
@@ -347,11 +348,6 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     {
         visitor.visit_unit()
     }
-}
-
-enum SequenceAccess<'a, 'py> {
-    Sequence(PySequenceAccess<'a, 'py>),
-    Set(PySetAsSequence<'py>),
 }
 
 struct PySequenceAccess<'a, 'py> {
@@ -515,10 +511,7 @@ impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        match self.de.sequence_access(Some(len))? {
-            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
-            SequenceAccess::Set(set) => visitor.visit_seq(set),
-        }
+        visitor.visit_seq(self.de.sequence_access(Some(len))?)
     }
 
     fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
@@ -671,18 +664,18 @@ mod test {
     }
 
     #[test]
-    fn test_tuple_from_pyset() {
-        let expected = ("foo".to_string(), 5);
-        let expected_json = json!(["foo", 5]);
-        let code = "{'foo', 5}";
+    fn test_vec_from_pyset() {
+        let expected = vec!["foo".to_string()];
+        let expected_json = json!(["foo"]);
+        let code = "{'foo'}";
         test_de(code, &expected, &expected_json);
     }
 
     #[test]
-    fn test_tuple_from_pyfrozenset() {
-        let expected = ("foo".to_string(), 5);
-        let expected_json = json!(["foo", 5]);
-        let code = "frozenset({'foo', 5})";
+    fn test_vec_from_pyfrozenset() {
+        let expected = vec!["foo".to_string()];
+        let expected_json = json!(["foo"]);
+        let code = "frozenset({'foo'})";
         test_de(code, &expected, &expected_json);
     }
 
