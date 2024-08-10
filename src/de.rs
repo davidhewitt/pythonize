@@ -483,6 +483,10 @@ mod test {
             assert_eq!(&actual, expected);
             let actual_json: JsonValue = depythonize(&obj).unwrap();
             assert_eq!(&actual_json, expected_json);
+
+            #[allow(deprecated)]
+            let actual: T = depythonize_bound(obj.clone()).unwrap();
+            assert_eq!(&actual, expected);
         });
     }
 
