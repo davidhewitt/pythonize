@@ -1,18 +1,27 @@
 ## Unreleased
 
+### Packaging
 - Bump MSRV to 1.63
 - Update to PyO3 0.22
+
+### Added
 - Support `u128` / `i128` integers.
-- Remove support for PyO3's `gil-refs` feature
-- `pythonize()` now returns `Bound<'py, PyAny>` instead of `Py<PyAny>`
-- `depythonize()` now take a `&Bound` and is no longer deprecated
-- `depythonize_bound()` is now deprecated
-- `Depythonizer` now contains a `&Bound` and so has an extra lifetime `'bound`
-- `Depythonizer::from_object()` now takes a `&Bound` and is no longer deprecated
-- Fix overflow error attempting to depythonize `u64` values greater than `i64::MAX` to types like `serde_json::Value`
 - Implement `PythonizeListType` for `PyTuple`
 - Support deserializing enums from any `PyMapping` instead of just `PyDict`
 - Support serializing struct-like types to named mappings using `PythonizeTypes::NamedMap`
+
+### Changed
+- `pythonize()` now returns `Bound<'py, PyAny>` instead of `Py<PyAny>`
+- `depythonize()` now take `&'a Bound` and is no longer deprecated
+- `depythonize_bound()` is now deprecated
+- `Depythonizer::from_object()` now takes `&'a Bound` and is no longer deprecated
+- `Depythonizer` now contains `&'a Bound` and so has an extra lifetime `'a`
+
+### Removed
+- Remove support for PyO3's `gil-refs` feature
+
+### Fixed
+- Fix overflow error attempting to depythonize `u64` values greater than `i64::MAX` to types like `serde_json::Value`
 
 ## 0.21.1 - 2024-04-02
 

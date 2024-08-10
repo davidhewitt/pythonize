@@ -1,43 +1,38 @@
 use pyo3::{types::*, Bound};
-use serde::de::{self, IntoDeserializer};
+use serde::de::{self, DeserializeOwned, IntoDeserializer};
 use serde::Deserialize;
 
 use crate::error::{PythonizeError, Result};
 
 /// Attempt to convert a Python object to an instance of `T`
-pub fn depythonize<'py, 'obj, T>(obj: &'obj Bound<'py, PyAny>) -> Result<T>
+pub fn depythonize<'a, 'py, T>(obj: &'a Bound<'py, PyAny>) -> Result<T>
 where
-    T: Deserialize<'obj>,
+    T: Deserialize<'a>,
 {
-    let mut depythonizer = Depythonizer::from_object(obj);
-    T::deserialize(&mut depythonizer)
+    T::deserialize(&mut Depythonizer::from_object(obj))
 }
 
 /// Attempt to convert a Python object to an instance of `T`
 #[deprecated(since = "0.22.0", note = "use `depythonize` instead")]
 pub fn depythonize_bound<'py, T>(obj: Bound<'py, PyAny>) -> Result<T>
 where
-    T: for<'a> Deserialize<'a>,
+    T: DeserializeOwned,
 {
-    let mut depythonizer = Depythonizer::from_object(&obj);
-    T::deserialize(&mut depythonizer)
+    T::deserialize(&mut Depythonizer::from_object(&obj))
 }
 
 /// A structure that deserializes Python objects into Rust values
-pub struct Depythonizer<'py, 'bound> {
-    input: &'bound Bound<'py, PyAny>,
+pub struct Depythonizer<'a, 'py> {
+    input: &'a Bound<'py, PyAny>,
 }
 
-impl<'py, 'bound> Depythonizer<'py, 'bound> {
+impl<'a, 'py> Depythonizer<'a, 'py> {
     /// Create a deserializer from a Python object
-    pub fn from_object<'input>(input: &'input Bound<'py, PyAny>) -> Depythonizer<'py, 'input> {
+    pub fn from_object(input: &'a Bound<'py, PyAny>) -> Self {
         Depythonizer { input }
     }
 
-    fn sequence_access(
-        &self,
-        expected_len: Option<usize>,
-    ) -> Result<PySequenceAccess<'py, 'bound>> {
+    fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'a, 'py>> {
         let seq = self.input.downcast::<PySequence>()?;
         let len = self.input.len()?;
 
@@ -97,14 +92,14 @@ macro_rules! deserialize_type {
     };
 }
 
-impl<'a, 'py, 'de, 'bound> de::Deserializer<'de> for &'a mut Depythonizer<'py, 'bound> {
+impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     type Error = PythonizeError;
 
     fn deserialize_any<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        let obj = &self.input;
+        let obj = self.input;
 
         // First check for cases which are cheap to check due to pointer
         // comparison or bitflag checks
@@ -307,8 +302,7 @@ impl<'a, 'py, 'de, 'bound> de::Deserializer<'de> for &'a mut Depythonizer<'py, '
                 .downcast_into::<PyString>()
                 .map_err(|_| PythonizeError::dict_key_not_string())?;
             let value = m.get_item(&variant)?;
-            let mut de = Depythonizer::from_object(&value);
-            visitor.visit_enum(PyEnumAccess::new(&mut de, variant))
+            visitor.visit_enum(PyEnumAccess::new(&value, variant))
         } else {
             Err(PythonizeError::invalid_enum_type())
         }
@@ -333,19 +327,19 @@ impl<'a, 'py, 'de, 'bound> de::Deserializer<'de> for &'a mut Depythonizer<'py, '
     }
 }
 
-struct PySequenceAccess<'py, 'bound> {
-    seq: &'bound Bound<'py, PySequence>,
+struct PySequenceAccess<'a, 'py> {
+    seq: &'a Bound<'py, PySequence>,
     index: usize,
     len: usize,
 }
 
-impl<'py, 'bound> PySequenceAccess<'py, 'bound> {
-    fn new(seq: &'bound Bound<'py, PySequence>, len: usize) -> Self {
+impl<'a, 'py> PySequenceAccess<'a, 'py> {
+    fn new(seq: &'a Bound<'py, PySequence>, len: usize) -> Self {
         Self { seq, index: 0, len }
     }
 }
 
-impl<'de, 'py, 'bound> de::SeqAccess<'de> for PySequenceAccess<'py, 'bound> {
+impl<'de> de::SeqAccess<'de> for PySequenceAccess<'_, '_> {
     type Error = PythonizeError;
 
     fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
@@ -354,9 +348,9 @@ impl<'de, 'py, 'bound> de::SeqAccess<'de> for PySequenceAccess<'py, 'bound> {
     {
         if self.index < self.len {
             let item = self.seq.get_item(self.index)?;
-            let mut item_de = Depythonizer::from_object(&item);
             self.index += 1;
-            seed.deserialize(&mut item_de).map(Some)
+            seed.deserialize(&mut Depythonizer::from_object(&item))
+                .map(Some)
         } else {
             Ok(None)
         }
@@ -386,7 +380,7 @@ impl<'py> PyMappingAccess<'py> {
     }
 }
 
-impl<'de, 'py> de::MapAccess<'de> for PyMappingAccess<'py> {
+impl<'de> de::MapAccess<'de> for PyMappingAccess<'_> {
     type Error = PythonizeError;
 
     fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
@@ -395,9 +389,9 @@ impl<'de, 'py> de::MapAccess<'de> for PyMappingAccess<'py> {
     {
         if self.key_idx < self.len {
             let item = self.keys.get_item(self.key_idx)?;
-            let mut item_de = Depythonizer::from_object(&item);
             self.key_idx += 1;
-            seed.deserialize(&mut item_de).map(Some)
+            seed.deserialize(&mut Depythonizer::from_object(&item))
+                .map(Some)
         } else {
             Ok(None)
         }
@@ -408,24 +402,26 @@ impl<'de, 'py> de::MapAccess<'de> for PyMappingAccess<'py> {
         V: de::DeserializeSeed<'de>,
     {
         let item = self.values.get_item(self.val_idx)?;
-        let mut item_de = Depythonizer::from_object(&item);
         self.val_idx += 1;
-        seed.deserialize(&mut item_de)
+        seed.deserialize(&mut Depythonizer::from_object(&item))
     }
 }
 
-struct PyEnumAccess<'a, 'py, 'bound> {
-    de: &'a mut Depythonizer<'py, 'bound>,
+struct PyEnumAccess<'a, 'py> {
+    de: Depythonizer<'a, 'py>,
     variant: Bound<'py, PyString>,
 }
 
-impl<'a, 'py, 'bound> PyEnumAccess<'a, 'py, 'bound> {
-    fn new(de: &'a mut Depythonizer<'py, 'bound>, variant: Bound<'py, PyString>) -> Self {
-        Self { de, variant }
+impl<'a, 'py> PyEnumAccess<'a, 'py> {
+    fn new(obj: &'a Bound<'py, PyAny>, variant: Bound<'py, PyString>) -> Self {
+        Self {
+            de: Depythonizer::from_object(obj),
+            variant,
+        }
     }
 }
 
-impl<'a, 'py, 'de, 'bound> de::EnumAccess<'de> for PyEnumAccess<'a, 'py, 'bound> {
+impl<'de> de::EnumAccess<'de> for PyEnumAccess<'_, '_> {
     type Error = PythonizeError;
     type Variant = Self;
 
@@ -440,7 +436,7 @@ impl<'a, 'py, 'de, 'bound> de::EnumAccess<'de> for PyEnumAccess<'a, 'py, 'bound>
     }
 }
 
-impl<'a, 'py, 'de, 'bound> de::VariantAccess<'de> for PyEnumAccess<'a, 'py, 'bound> {
+impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
     type Error = PythonizeError;
 
     fn unit_variant(self) -> Result<()> {
@@ -451,7 +447,7 @@ impl<'a, 'py, 'de, 'bound> de::VariantAccess<'de> for PyEnumAccess<'a, 'py, 'bou
     where
         T: de::DeserializeSeed<'de>,
     {
-        seed.deserialize(self.de)
+        seed.deserialize(&mut { self.de })
     }
 
     fn tuple_variant<V>(self, len: usize, visitor: V) -> Result<V::Value>
@@ -482,14 +478,15 @@ mod test {
         T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
     {
         Python::with_gil(|py| {
-            let locals = PyDict::new_bound(py);
-            py.run_bound(&format!("obj = {}", code), None, Some(&locals))
-                .unwrap();
-            let obj = locals.get_item("obj").unwrap().unwrap();
+            let obj = py.eval_bound(code, None, None).unwrap();
             let actual: T = depythonize(&obj).unwrap();
             assert_eq!(&actual, expected);
             let actual_json: JsonValue = depythonize(&obj).unwrap();
             assert_eq!(&actual_json, expected_json);
+
+            #[allow(deprecated)]
+            let actual: T = depythonize_bound(obj.clone()).unwrap();
+            assert_eq!(&actual, expected);
         });
     }
 
