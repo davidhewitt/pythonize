@@ -32,15 +32,6 @@ impl PythonizeError {
         }
     }
 
-    pub(crate) fn unexpected_type<T>(t: T) -> Self
-    where
-        T: ToString,
-    {
-        Self {
-            inner: Box::new(ErrorImpl::UnexpectedType(t.to_string())),
-        }
-    }
-
     pub(crate) fn dict_key_not_string() -> Self {
         Self {
             inner: Box::new(ErrorImpl::DictKeyNotString),
