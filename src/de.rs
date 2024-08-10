@@ -32,15 +32,28 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
         Depythonizer { input }
     }
 
-    fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'a, 'py>> {
-        let seq = self.input.downcast::<PySequence>()?;
+    fn sequence_access(&self, expected_len: Option<usize>) -> Result<SequenceAccess<'a, 'py>> {
+        let seq = match self.input.downcast::<PySequence>() {
+            Ok(seq) => seq,
+            Err(e) => {
+                return if let Ok(set) = self.input.downcast::<PySet>() {
+                    Ok(SequenceAccess::Set(PySetAsSequence::from_set(&set)))
+                } else if let Ok(frozenset) = self.input.downcast::<PyFrozenSet>() {
+                    Ok(SequenceAccess::Set(PySetAsSequence::from_frozenset(
+                        &frozenset,
+                    )))
+                } else {
+                    Err(e.into())
+                }
+            }
+        };
         let len = self.input.len()?;
 
         match expected_len {
             Some(expected) if expected != len => {
                 Err(PythonizeError::incorrect_sequence_length(expected, len))
             }
-            _ => Ok(PySequenceAccess::new(seq, len)),
+            _ => Ok(SequenceAccess::Sequence(PySequenceAccess::new(seq, len))),
         }
     }
 
@@ -238,14 +251,20 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.sequence_access(None)?)
+        match self.sequence_access(None)? {
+            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
+            SequenceAccess::Set(set) => visitor.visit_seq(set),
+        }
     }
 
     fn deserialize_tuple<V>(self, len: usize, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.sequence_access(Some(len))?)
+        match self.sequence_access(Some(len))? {
+            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
+            SequenceAccess::Set(set) => visitor.visit_seq(set),
+        }
     }
 
     fn deserialize_tuple_struct<V>(
@@ -257,7 +276,10 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.sequence_access(Some(len))?)
+        match self.sequence_access(Some(len))? {
+            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
+            SequenceAccess::Set(set) => visitor.visit_seq(set),
+        }
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
@@ -327,6 +349,11 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     }
 }
 
+enum SequenceAccess<'a, 'py> {
+    Sequence(PySequenceAccess<'a, 'py>),
+    Set(PySetAsSequence<'py>),
+}
+
 struct PySequenceAccess<'a, 'py> {
     seq: &'a Bound<'py, PySequence>,
     index: usize,
@@ -353,6 +380,40 @@ impl<'de> de::SeqAccess<'de> for PySequenceAccess<'_, '_> {
                 .map(Some)
         } else {
             Ok(None)
+        }
+    }
+}
+
+struct PySetAsSequence<'py> {
+    iter: Bound<'py, PyIterator>,
+}
+
+impl<'py> PySetAsSequence<'py> {
+    fn from_set(set: &Bound<'py, PySet>) -> Self {
+        Self {
+            iter: PyIterator::from_bound_object(&set).expect("set is always iterable"),
+        }
+    }
+
+    fn from_frozenset(set: &Bound<'py, PyFrozenSet>) -> Self {
+        Self {
+            iter: PyIterator::from_bound_object(&set).expect("frozenset is always iterable"),
+        }
+    }
+}
+
+impl<'de> de::SeqAccess<'de> for PySetAsSequence<'_> {
+    type Error = PythonizeError;
+
+    fn next_element_seed<T>(&mut self, seed: T) -> Result<Option<T::Value>>
+    where
+        T: de::DeserializeSeed<'de>,
+    {
+        match self.iter.next() {
+            Some(item) => seed
+                .deserialize(&mut Depythonizer::from_object(&item?))
+                .map(Some),
+            None => Ok(None),
         }
     }
 }
@@ -454,7 +515,10 @@ impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.de.sequence_access(Some(len))?)
+        match self.de.sequence_access(Some(len))? {
+            SequenceAccess::Sequence(seq) => visitor.visit_seq(seq),
+            SequenceAccess::Set(set) => visitor.visit_seq(set),
+        }
     }
 
     fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
@@ -603,6 +667,22 @@ mod test {
         let expected = ("foo".to_string(), 5);
         let expected_json = json!(["foo", 5]);
         let code = "['foo', 5]";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_tuple_from_pyset() {
+        let expected = ("foo".to_string(), 5);
+        let expected_json = json!(["foo", 5]);
+        let code = "{'foo', 5}";
+        test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_tuple_from_pyfrozenset() {
+        let expected = ("foo".to_string(), 5);
+        let expected_json = json!(["foo", 5]);
+        let code = "frozenset({'foo', 5})";
         test_de(code, &expected, &expected_json);
     }
 
