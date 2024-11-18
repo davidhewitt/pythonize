@@ -14,7 +14,7 @@ where
 
 /// Attempt to convert a Python object to an instance of `T`
 #[deprecated(since = "0.22.0", note = "use `depythonize` instead")]
-pub fn depythonize_bound<'py, T>(obj: Bound<'py, PyAny>) -> Result<T>
+pub fn depythonize_bound<T>(obj: Bound<PyAny>) -> Result<T>
 where
     T: DeserializeOwned,
 {
@@ -46,10 +46,10 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
 
     fn set_access(&self) -> Result<PySetAsSequence<'py>> {
         match self.input.downcast::<PySet>() {
-            Ok(set) => Ok(PySetAsSequence::from_set(&set)),
+            Ok(set) => Ok(PySetAsSequence::from_set(set)),
             Err(e) => {
                 if let Ok(f) = self.input.downcast::<PyFrozenSet>() {
-                    Ok(PySetAsSequence::from_frozenset(&f))
+                    Ok(PySetAsSequence::from_frozenset(f))
                 } else {
                     Err(e.into())
                 }
@@ -387,13 +387,13 @@ struct PySetAsSequence<'py> {
 impl<'py> PySetAsSequence<'py> {
     fn from_set(set: &Bound<'py, PySet>) -> Self {
         Self {
-            iter: PyIterator::from_bound_object(&set).expect("set is always iterable"),
+            iter: PyIterator::from_object(set).expect("set is always iterable"),
         }
     }
 
     fn from_frozenset(set: &Bound<'py, PyFrozenSet>) -> Self {
         Self {
-            iter: PyIterator::from_bound_object(&set).expect("frozenset is always iterable"),
+            iter: PyIterator::from_object(set).expect("frozenset is always iterable"),
         }
     }
 }
@@ -415,8 +415,8 @@ impl<'de> de::SeqAccess<'de> for PySetAsSequence<'_> {
 }
 
 struct PyMappingAccess<'py> {
-    keys: Bound<'py, PySequence>,
-    values: Bound<'py, PySequence>,
+    keys: Bound<'py, PyList>,
+    values: Bound<'py, PyList>,
     key_idx: usize,
     val_idx: usize,
     len: usize,
@@ -524,18 +524,20 @@ impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
 
 #[cfg(test)]
 mod test {
+    use std::ffi::CStr;
+
     use super::*;
     use crate::error::ErrorImpl;
     use maplit::hashmap;
-    use pyo3::{IntoPy, Python};
+    use pyo3::{IntoPyObject, Python};
     use serde_json::{json, Value as JsonValue};
 
-    fn test_de<T>(code: &str, expected: &T, expected_json: &JsonValue)
+    fn test_de<T>(code: &CStr, expected: &T, expected_json: &JsonValue)
     where
         T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
     {
         Python::with_gil(|py| {
-            let obj = py.eval_bound(code, None, None).unwrap();
+            let obj = py.eval(code, None, None).unwrap();
             let actual: T = depythonize(&obj).unwrap();
             assert_eq!(&actual, expected);
             let actual_json: JsonValue = depythonize(&obj).unwrap();
@@ -554,7 +556,7 @@ mod test {
 
         let expected = Empty;
         let expected_json = json!(null);
-        let code = "None";
+        let code = c"None";
         test_de(code, &expected, &expected_json);
     }
 
@@ -580,7 +582,7 @@ mod test {
             "baz": 45.23,
             "qux": true
         });
-        let code = "{'foo': 'Foo', 'bar': 8, 'baz': 45.23, 'qux': True}";
+        let code = c"{'foo': 'Foo', 'bar': 8, 'baz': 45.23, 'qux': True}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -592,13 +594,11 @@ mod test {
             bar: usize,
         }
 
-        let code = "{'foo': 'Foo'}";
+        let code = c"{'foo': 'Foo'}";
 
         Python::with_gil(|py| {
-            let locals = PyDict::new_bound(py);
-            py.run_bound(&format!("obj = {}", code), None, Some(&locals))
-                .unwrap();
-            let obj = locals.get_item("obj").unwrap().unwrap();
+            let locals = PyDict::new(py);
+            let obj = py.eval(code, None, Some(&locals)).unwrap();
             assert!(matches!(
                 *depythonize::<Struct>(&obj).unwrap_err().inner,
                 ErrorImpl::Message(msg) if msg == "missing field `bar`"
@@ -613,7 +613,7 @@ mod test {
 
         let expected = TupleStruct("cat".to_string(), -10.05);
         let expected_json = json!(["cat", -10.05]);
-        let code = "('cat', -10.05)";
+        let code = c"('cat', -10.05)";
         test_de(code, &expected, &expected_json);
     }
 
@@ -622,13 +622,11 @@ mod test {
         #[derive(Debug, Deserialize, PartialEq)]
         struct TupleStruct(String, f64);
 
-        let code = "('cat', -10.05, 'foo')";
+        let code = c"('cat', -10.05, 'foo')";
 
         Python::with_gil(|py| {
-            let locals = PyDict::new_bound(py);
-            py.run_bound(&format!("obj = {}", code), None, Some(&locals))
-                .unwrap();
-            let obj = locals.get_item("obj").unwrap().unwrap();
+            let locals = PyDict::new(py);
+            let obj = py.eval(code, None, Some(&locals)).unwrap();
             assert!(matches!(
                 *depythonize::<TupleStruct>(&obj).unwrap_err().inner,
                 ErrorImpl::IncorrectSequenceLength { expected, got } if expected == 2 && got == 3
@@ -643,7 +641,7 @@ mod test {
 
         let expected = TupleStruct("cat".to_string(), -10.05);
         let expected_json = json!(["cat", -10.05]);
-        let code = "['cat', -10.05]";
+        let code = c"['cat', -10.05]";
         test_de(code, &expected, &expected_json);
     }
 
@@ -651,7 +649,7 @@ mod test {
     fn test_tuple() {
         let expected = ("foo".to_string(), 5);
         let expected_json = json!(["foo", 5]);
-        let code = "('foo', 5)";
+        let code = c"('foo', 5)";
         test_de(code, &expected, &expected_json);
     }
 
@@ -659,7 +657,7 @@ mod test {
     fn test_tuple_from_pylist() {
         let expected = ("foo".to_string(), 5);
         let expected_json = json!(["foo", 5]);
-        let code = "['foo', 5]";
+        let code = c"['foo', 5]";
         test_de(code, &expected, &expected_json);
     }
 
@@ -667,7 +665,7 @@ mod test {
     fn test_vec_from_pyset() {
         let expected = vec!["foo".to_string()];
         let expected_json = json!(["foo"]);
-        let code = "{'foo'}";
+        let code = c"{'foo'}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -675,7 +673,7 @@ mod test {
     fn test_vec_from_pyfrozenset() {
         let expected = vec!["foo".to_string()];
         let expected_json = json!(["foo"]);
-        let code = "frozenset({'foo'})";
+        let code = c"frozenset({'foo'})";
         test_de(code, &expected, &expected_json);
     }
 
@@ -683,7 +681,7 @@ mod test {
     fn test_vec() {
         let expected = vec![3, 2, 1];
         let expected_json = json!([3, 2, 1]);
-        let code = "[3, 2, 1]";
+        let code = c"[3, 2, 1]";
         test_de(code, &expected, &expected_json);
     }
 
@@ -691,7 +689,7 @@ mod test {
     fn test_vec_from_tuple() {
         let expected = vec![3, 2, 1];
         let expected_json = json!([3, 2, 1]);
-        let code = "(3, 2, 1)";
+        let code = c"(3, 2, 1)";
         test_de(code, &expected, &expected_json);
     }
 
@@ -699,7 +697,7 @@ mod test {
     fn test_hashmap() {
         let expected = hashmap! {"foo".to_string() => 4};
         let expected_json = json!({"foo": 4 });
-        let code = "{'foo': 4}";
+        let code = c"{'foo': 4}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -712,7 +710,7 @@ mod test {
 
         let expected = Foo::Variant;
         let expected_json = json!("Variant");
-        let code = "'Variant'";
+        let code = c"'Variant'";
         test_de(code, &expected, &expected_json);
     }
 
@@ -725,7 +723,7 @@ mod test {
 
         let expected = Foo::Tuple(12, "cat".to_string());
         let expected_json = json!({"Tuple": [12, "cat"]});
-        let code = "{'Tuple': [12, 'cat']}";
+        let code = c"{'Tuple': [12, 'cat']}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -738,7 +736,7 @@ mod test {
 
         let expected = Foo::NewType("cat".to_string());
         let expected_json = json!({"NewType": "cat" });
-        let code = "{'NewType': 'cat'}";
+        let code = c"{'NewType': 'cat'}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -754,7 +752,7 @@ mod test {
             bar: 25,
         };
         let expected_json = json!({"Struct": {"foo": "cat", "bar": 25 }});
-        let code = "{'Struct': {'foo': 'cat', 'bar': 25}}";
+        let code = c"{'Struct': {'foo': 'cat', 'bar': 25}}";
         test_de(code, &expected, &expected_json);
     }
     #[test]
@@ -767,7 +765,7 @@ mod test {
 
         let expected = Foo::Tuple(12.0, 'c');
         let expected_json = json!([12.0, 'c']);
-        let code = "[12.0, 'c']";
+        let code = c"[12.0, 'c']";
         test_de(code, &expected, &expected_json);
     }
 
@@ -781,7 +779,7 @@ mod test {
 
         let expected = Foo::NewType("cat".to_string());
         let expected_json = json!("cat");
-        let code = "'cat'";
+        let code = c"'cat'";
         test_de(code, &expected, &expected_json);
     }
 
@@ -798,7 +796,7 @@ mod test {
             bar: [2, 5, 3, 1],
         };
         let expected_json = json!({"foo": ["a", "b", "c"], "bar": [2, 5, 3, 1]});
-        let code = "{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}";
+        let code = c"{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -831,7 +829,7 @@ mod test {
         };
         let expected_json =
             json!({"name": "SomeFoo", "bar": { "value": 13, "variant": { "Tuple": [-1.5, 8]}}});
-        let code = "{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}";
+        let code = c"{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -839,38 +837,38 @@ mod test {
     fn test_int_limits() {
         Python::with_gil(|py| {
             // serde_json::Value supports u64 and i64 as maxiumum sizes
-            let _: serde_json::Value = depythonize(&u8::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&u8::MIN.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i8::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i8::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u8::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&u8::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i8::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i8::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: serde_json::Value = depythonize(&u16::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&u16::MIN.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i16::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i16::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u16::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&u16::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i16::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i16::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: serde_json::Value = depythonize(&u32::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&u32::MIN.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i32::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i32::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u32::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&u32::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i32::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i32::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: serde_json::Value = depythonize(&u64::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&u64::MIN.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i64::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: serde_json::Value = depythonize(&i64::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: serde_json::Value = depythonize(&u64::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&u64::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i64::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: serde_json::Value = depythonize(&i64::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: u128 = depythonize(&u128::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: i128 = depythonize(&u128::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: u128 = depythonize(&u128::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: i128 = depythonize(&u128::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: i128 = depythonize(&i128::MAX.into_py(py).into_bound(py)).unwrap();
-            let _: i128 = depythonize(&i128::MIN.into_py(py).into_bound(py)).unwrap();
+            let _: i128 = depythonize(&i128::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: i128 = depythonize(&i128::MIN.into_pyobject(py).unwrap()).unwrap();
         });
     }
 
     #[test]
     fn test_deserialize_bytes() {
         Python::with_gil(|py| {
-            let obj = PyBytes::new_bound(py, "hello".as_bytes());
+            let obj = PyBytes::new(py, "hello".as_bytes());
             let actual: Vec<u8> = depythonize(&obj).unwrap();
             assert_eq!(actual, b"hello");
         })
@@ -880,7 +878,7 @@ mod test {
     fn test_char() {
         let expected = 'a';
         let expected_json = json!("a");
-        let code = "'a'";
+        let code = c"'a'";
         test_de(code, &expected, &expected_json);
     }
 
@@ -888,7 +886,7 @@ mod test {
     fn test_unknown_type() {
         Python::with_gil(|py| {
             let obj = py
-                .import_bound("decimal")
+                .import("decimal")
                 .unwrap()
                 .getattr("Decimal")
                 .unwrap()

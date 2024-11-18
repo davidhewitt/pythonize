@@ -1,10 +1,10 @@
 use std::marker::PhantomData;
 
 use pyo3::types::{
-    PyAnyMethods, PyDict, PyDictMethods, PyList, PyMapping, PySequence, PyString, PyTuple,
+    PyDict, PyDictMethods, PyList, PyListMethods, PyMapping, PySequence, PyString, PyTuple,
     PyTupleMethods,
 };
-use pyo3::{Bound, IntoPy, PyAny, PyResult, Python, ToPyObject};
+use pyo3::{Bound, BoundObject, IntoPyObject, PyAny, PyResult, Python};
 use serde::{ser, Serialize};
 
 use crate::error::{PythonizeError, Result};
@@ -52,12 +52,12 @@ pub trait PythonizeNamedMappingType<'py> {
 /// Trait for types which can represent a Python sequence
 pub trait PythonizeListType: Sized {
     /// Constructor
-    fn create_sequence<T, U>(
-        py: Python,
+    fn create_sequence<'py, T, U>(
+        py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
     ) -> PyResult<Bound<PySequence>>
     where
-        T: ToPyObject,
+        T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>;
 }
 
@@ -76,7 +76,7 @@ impl<'py> PythonizeMappingType<'py> for PyDict {
     type Builder = Bound<'py, Self>;
 
     fn builder(py: Python<'py>, _len: Option<usize>) -> PyResult<Self::Builder> {
-        Ok(Self::new_bound(py))
+        Ok(Self::new(py))
     }
 
     fn push_item(
@@ -127,31 +127,28 @@ impl<'py, T: PythonizeMappingType<'py>> PythonizeNamedMappingType<'py>
 }
 
 impl PythonizeListType for PyList {
-    fn create_sequence<T, U>(
-        py: Python,
+    fn create_sequence<'py, T, U>(
+        py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
     ) -> PyResult<Bound<PySequence>>
     where
-        T: ToPyObject,
+        T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>,
     {
-        Ok(PyList::new_bound(py, elements)
-            .into_any()
-            .downcast_into()
-            .unwrap())
+        Ok(PyList::new(py, elements)?.into_sequence())
     }
 }
 
 impl PythonizeListType for PyTuple {
-    fn create_sequence<T, U>(
-        py: Python,
+    fn create_sequence<'py, T, U>(
+        py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
     ) -> PyResult<Bound<PySequence>>
     where
-        T: ToPyObject,
+        T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>,
     {
-        Ok(PyTuple::new_bound(py, elements).into_sequence())
+        Ok(PyTuple::new(py, elements)?.into_sequence())
     }
 }
 
@@ -245,6 +242,20 @@ pub struct PythonMapSerializer<'py, P: PythonizeTypes<'py>> {
     _types: PhantomData<P>,
 }
 
+impl<'py, P: PythonizeTypes<'py>> Pythonizer<'py, P> {
+    /// The default implementation for serialisation functions.
+    #[inline]
+    fn serialise_default<T>(self, v: T) -> Result<Bound<'py, PyAny>>
+    where
+        T: IntoPyObject<'py>,
+        <T as IntoPyObject<'py>>::Error: Into<PythonizeError>,
+    {
+        v.into_pyobject(self.py)
+            .map(|x| x.into_any().into_bound())
+            .map_err(Into::into)
+    }
+}
+
 impl<'py, P: PythonizeTypes<'py>> ser::Serializer for Pythonizer<'py, P> {
     type Ok = Bound<'py, PyAny>;
     type Error = PythonizeError;
@@ -257,47 +268,47 @@ impl<'py, P: PythonizeTypes<'py>> ser::Serializer for Pythonizer<'py, P> {
     type SerializeStructVariant = PythonStructVariantSerializer<'py, P>;
 
     fn serialize_bool(self, v: bool) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_i8(self, v: i8) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_i16(self, v: i16) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_i32(self, v: i32) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_i64(self, v: i64) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_u8(self, v: u8) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_u16(self, v: u16) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_u32(self, v: u32) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_u64(self, v: u64) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_f32(self, v: f32) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_f64(self, v: f64) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_char(self, v: char) -> Result<Bound<'py, PyAny>> {
@@ -305,11 +316,11 @@ impl<'py, P: PythonizeTypes<'py>> ser::Serializer for Pythonizer<'py, P> {
     }
 
     fn serialize_str(self, v: &str) -> Result<Bound<'py, PyAny>> {
-        Ok(PyString::new_bound(self.py, v).into_any())
+        Ok(PyString::new(self.py, v).into_any())
     }
 
     fn serialize_bytes(self, v: &[u8]) -> Result<Bound<'py, PyAny>> {
-        Ok(v.into_py(self.py).into_bound(self.py))
+        self.serialise_default(v)
     }
 
     fn serialize_none(self) -> Result<Bound<'py, PyAny>> {
@@ -364,7 +375,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::Serializer for Pythonizer<'py, P> {
         let mut m = P::NamedMap::builder(self.py, 1, name)?;
         P::NamedMap::push_field(
             &mut m,
-            PyString::new_bound(self.py, variant),
+            PyString::new(self.py, variant),
             value.serialize(self)?,
         )?;
         Ok(P::NamedMap::finish(m)?.into_any())
@@ -467,7 +478,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::SerializeSeq for PythonCollectionSerializ
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
         let instance = P::List::create_sequence(self.py, self.items)?;
-        Ok(instance.to_object(self.py).into_bound(self.py))
+        Ok(instance.into_pyobject(self.py)?.into_any())
     }
 }
 
@@ -483,7 +494,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::SerializeTuple for PythonCollectionSerial
     }
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
-        Ok(PyTuple::new_bound(self.py, self.items).into_any())
+        Ok(PyTuple::new(self.py, self.items)?.into_any())
     }
 }
 
@@ -520,7 +531,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::SerializeTupleVariant
         let mut m = P::NamedMap::builder(self.inner.py, 1, self.name)?;
         P::NamedMap::push_field(
             &mut m,
-            PyString::new_bound(self.inner.py, self.variant),
+            PyString::new(self.inner.py, self.variant),
             ser::SerializeTuple::end(self.inner)?,
         )?;
         Ok(P::NamedMap::finish(m)?.into_any())
@@ -568,7 +579,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::SerializeStruct for PythonStructDictSeria
     {
         P::NamedMap::push_field(
             &mut self.builder,
-            PyString::new_bound(self.py, key),
+            PyString::new(self.py, key),
             pythonize_custom::<P, _>(self.py, value)?,
         )?;
         Ok(())
@@ -591,7 +602,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::SerializeStructVariant
     {
         P::NamedMap::push_field(
             &mut self.inner.builder,
-            PyString::new_bound(self.inner.py, key),
+            PyString::new(self.inner.py, key),
             pythonize_custom::<P, _>(self.inner.py, value)?,
         )?;
         Ok(())
@@ -602,7 +613,7 @@ impl<'py, P: PythonizeTypes<'py>> ser::SerializeStructVariant
         let mut m = P::NamedMap::builder(self.inner.py, 1, self.name)?;
         P::NamedMap::push_field(
             &mut m,
-            PyString::new_bound(self.inner.py, self.variant),
+            PyString::new(self.inner.py, self.variant),
             v.into_any(),
         )?;
         Ok(P::NamedMap::finish(m)?.into_any())
@@ -625,11 +636,11 @@ mod test {
         Python::with_gil(|py| -> PyResult<()> {
             let obj = pythonize(py, &src)?;
 
-            let locals = PyDict::new_bound(py);
+            let locals = PyDict::new(py);
             locals.set_item("obj", obj)?;
 
-            py.run_bound(
-                "import json; result = json.dumps(obj, separators=(',', ':'))",
+            py.run(
+                c"import json; result = json.dumps(obj, separators=(',', ':'))",
                 None,
                 Some(&locals),
             )?;
@@ -838,7 +849,7 @@ mod test {
         Python::with_gil(|py| {
             assert!(pythonize(py, serde_bytes::Bytes::new(b"foo"))
                 .expect("bytes will always serialize successfully")
-                .eq(&PyBytes::new_bound(py, b"foo"))
+                .eq(&PyBytes::new(py, b"foo"))
                 .expect("bytes will always compare successfully"));
         });
     }

@@ -4,6 +4,7 @@ use pyo3::{
     exceptions::{PyIndexError, PyKeyError},
     prelude::*,
     types::{PyDict, PyMapping, PySequence, PyTuple},
+    BoundObject,
 };
 use pythonize::{
     depythonize, pythonize_custom, PythonizeListType, PythonizeMappingType,
@@ -32,12 +33,12 @@ impl CustomList {
 }
 
 impl PythonizeListType for CustomList {
-    fn create_sequence<T, U>(
-        py: Python,
+    fn create_sequence<'py, T, U>(
+        py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
     ) -> PyResult<Bound<PySequence>>
     where
-        T: ToPyObject,
+        T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>,
     {
         let sequence = Bound::new(
@@ -45,8 +46,9 @@ impl PythonizeListType for CustomList {
             CustomList {
                 items: elements
                     .into_iter()
-                    .map(|item| item.to_object(py))
-                    .collect(),
+                    .map(|item| item.into_pyobject(py).map(|x| x.into_any().unbind()))
+                    .collect::<Result<Vec<_>, T::Error>>()
+                    .map_err(Into::into)?,
             },
         )?
         .into_any();
