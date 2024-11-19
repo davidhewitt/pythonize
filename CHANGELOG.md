@@ -1,3 +1,8 @@
+## Unreleased
+
+### Packaging
+- Update to PyO3 0.23
+
 ## 0.22.0 - 2024-08-10
 
 ### Packaging
