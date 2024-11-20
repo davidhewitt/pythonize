@@ -529,8 +529,8 @@ mod test {
     use super::*;
     use crate::error::ErrorImpl;
     use maplit::hashmap;
-    use pyo3::{IntoPyObject, Python};
     use pyo3::ffi::c_str;
+    use pyo3::{IntoPyObject, Python};
     use serde_json::{json, Value as JsonValue};
 
     fn test_de<T>(code: &CStr, expected: &T, expected_json: &JsonValue)
@@ -830,7 +830,8 @@ mod test {
         };
         let expected_json =
             json!({"name": "SomeFoo", "bar": { "value": 13, "variant": { "Tuple": [-1.5, 8]}}});
-        let code = c_str!("{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}");
+        let code =
+            c_str!("{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}");
         test_de(code, &expected, &expected_json);
     }
 
