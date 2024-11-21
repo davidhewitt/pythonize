@@ -69,7 +69,9 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-      - name: Test (abi3)
+      # https://github.com/PyO3/pyo3/issues/4709 - can't use abi3 w. freethreaded build
+      - if: ${{ !endsWith(matrix.python-version, 't') }}
+        name: Test (abi3)
         run: cargo test --verbose --features pyo3/abi3-py37
 
     env:
