@@ -41,14 +41,14 @@ impl Serialize for CannotSerialize {
 #[test]
 fn test_de_valid() {
     Python::with_gil(|py| {
-        let pyroot = PyDict::new_bound(py);
+        let pyroot = PyDict::new(py);
         pyroot.set_item("root_key", "root_value").unwrap();
 
-        let nested = PyDict::new_bound(py);
-        let nested_0 = PyDict::new_bound(py);
+        let nested = PyDict::new(py);
+        let nested_0 = PyDict::new(py);
         nested_0.set_item("nested_key", "nested_value_0").unwrap();
         nested.set_item("nested_0", nested_0).unwrap();
-        let nested_1 = PyDict::new_bound(py);
+        let nested_1 = PyDict::new(py);
         nested_1.set_item("nested_key", "nested_value_1").unwrap();
         nested.set_item("nested_1", nested_1).unwrap();
 
@@ -83,14 +83,14 @@ fn test_de_valid() {
 #[test]
 fn test_de_invalid() {
     Python::with_gil(|py| {
-        let pyroot = PyDict::new_bound(py);
+        let pyroot = PyDict::new(py);
         pyroot.set_item("root_key", "root_value").unwrap();
 
-        let nested = PyDict::new_bound(py);
-        let nested_0 = PyDict::new_bound(py);
+        let nested = PyDict::new(py);
+        let nested_0 = PyDict::new(py);
         nested_0.set_item("nested_key", "nested_value_0").unwrap();
         nested.set_item("nested_0", nested_0).unwrap();
-        let nested_1 = PyDict::new_bound(py);
+        let nested_1 = PyDict::new(py);
         nested_1.set_item("nested_key", 1).unwrap();
         nested.set_item("nested_1", nested_1).unwrap();
 

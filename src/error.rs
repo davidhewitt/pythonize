@@ -1,6 +1,7 @@
 use pyo3::PyErr;
 use pyo3::{exceptions::*, DowncastError, DowncastIntoError};
 use serde::{de, ser};
+use std::convert::Infallible;
 use std::error;
 use std::fmt::{self, Debug, Display};
 use std::result;
@@ -133,6 +134,13 @@ impl de::Error for PythonizeError {
         Self {
             inner: Box::new(ErrorImpl::Message(msg.to_string())),
         }
+    }
+}
+
+/// Convert an exception raised in Python to a `PythonizeError`
+impl From<Infallible> for PythonizeError {
+    fn from(other: Infallible) -> Self {
+        match other {}
     }
 }
 
