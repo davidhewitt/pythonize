@@ -55,7 +55,7 @@ pub trait PythonizeListType: Sized {
     fn create_sequence<'py, T, U>(
         py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
-    ) -> PyResult<Bound<PySequence>>
+    ) -> PyResult<Bound<'py, PySequence>>
     where
         T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>;
@@ -130,7 +130,7 @@ impl PythonizeListType for PyList {
     fn create_sequence<'py, T, U>(
         py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
-    ) -> PyResult<Bound<PySequence>>
+    ) -> PyResult<Bound<'py, PySequence>>
     where
         T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>,
@@ -143,7 +143,7 @@ impl PythonizeListType for PyTuple {
     fn create_sequence<'py, T, U>(
         py: Python<'py>,
         elements: impl IntoIterator<Item = T, IntoIter = U>,
-    ) -> PyResult<Bound<PySequence>>
+    ) -> PyResult<Bound<'py, PySequence>>
     where
         T: IntoPyObject<'py>,
         U: ExactSizeIterator<Item = T>,

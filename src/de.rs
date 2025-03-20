@@ -1,5 +1,5 @@
 use pyo3::{types::*, Bound};
-use serde::de::{self, DeserializeOwned, IntoDeserializer};
+use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 
 use crate::error::{ErrorImpl, PythonizeError, Result};
@@ -532,12 +532,9 @@ mod test {
             let obj = py.eval(code, None, None).unwrap();
             let actual: T = depythonize(&obj).unwrap();
             assert_eq!(&actual, expected);
+
             let actual_json: JsonValue = depythonize(&obj).unwrap();
             assert_eq!(&actual_json, expected_json);
-
-            #[allow(deprecated)]
-            let actual: T = depythonize_bound(obj.clone()).unwrap();
-            assert_eq!(&actual, expected);
         });
     }
 
