@@ -3,6 +3,9 @@
 ### Packaging
 - Update to PyO3 0.24
 
+## Removed
+- Remove deprecated `depythonize_bound()`
+
 ## 0.23.0 - 2024-11-22
 
 ### Packaging

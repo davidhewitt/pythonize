@@ -12,15 +12,6 @@ where
     T::deserialize(&mut Depythonizer::from_object(obj))
 }
 
-/// Attempt to convert a Python object to an instance of `T`
-#[deprecated(since = "0.22.0", note = "use `depythonize` instead")]
-pub fn depythonize_bound<T>(obj: Bound<PyAny>) -> Result<T>
-where
-    T: DeserializeOwned,
-{
-    T::deserialize(&mut Depythonizer::from_object(&obj))
-}
-
 /// A structure that deserializes Python objects into Rust values
 pub struct Depythonizer<'a, 'py> {
     input: &'a Bound<'py, PyAny>,
