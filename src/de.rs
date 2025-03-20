@@ -1,5 +1,5 @@
 use pyo3::{types::*, Bound};
-use serde::de::{self, DeserializeOwned, IntoDeserializer};
+use serde::de::{self, IntoDeserializer};
 use serde::Deserialize;
 
 use crate::error::{ErrorImpl, PythonizeError, Result};
@@ -10,15 +10,6 @@ where
     T: Deserialize<'a>,
 {
     T::deserialize(&mut Depythonizer::from_object(obj))
-}
-
-/// Attempt to convert a Python object to an instance of `T`
-#[deprecated(since = "0.22.0", note = "use `depythonize` instead")]
-pub fn depythonize_bound<T>(obj: Bound<PyAny>) -> Result<T>
-where
-    T: DeserializeOwned,
-{
-    T::deserialize(&mut Depythonizer::from_object(&obj))
 }
 
 /// A structure that deserializes Python objects into Rust values
@@ -541,12 +532,9 @@ mod test {
             let obj = py.eval(code, None, None).unwrap();
             let actual: T = depythonize(&obj).unwrap();
             assert_eq!(&actual, expected);
+
             let actual_json: JsonValue = depythonize(&obj).unwrap();
             assert_eq!(&actual_json, expected_json);
-
-            #[allow(deprecated)]
-            let actual: T = depythonize_bound(obj.clone()).unwrap();
-            assert_eq!(&actual, expected);
         });
     }
 
