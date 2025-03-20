@@ -79,6 +79,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         continue-on-error: true
 
+      - if: ${{ matrix.rust == needs.resolve.outputs.MSRV }}
+        name: Set dependencies on MSRV
+        run: cargo +stable update
+        env:
+          CARGO_RESOLVER_INCOMPATIBLE_RUST_VERSIONS: fallback
+
       - name: Test
         run: cargo test --verbose
 
