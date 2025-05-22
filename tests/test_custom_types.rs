@@ -107,10 +107,10 @@ impl CustomDict {
     }
 }
 
-impl<'py> PythonizeMappingType<'py> for CustomDict {
-    type Builder = Bound<'py, CustomDict>;
+impl PythonizeMappingType for CustomDict {
+    type Builder<'py> = Bound<'py, CustomDict>;
 
-    fn builder(py: Python<'py>, len: Option<usize>) -> PyResult<Self::Builder> {
+    fn builder<'py>(py: Python<'py>, len: Option<usize>) -> PyResult<Self::Builder<'py>> {
         Bound::new(
             py,
             CustomDict {
@@ -119,15 +119,15 @@ impl<'py> PythonizeMappingType<'py> for CustomDict {
         )
     }
 
-    fn push_item(
-        builder: &mut Self::Builder,
+    fn push_item<'py>(
+        builder: &mut Self::Builder<'py>,
         key: Bound<'py, PyAny>,
         value: Bound<'py, PyAny>,
     ) -> PyResult<()> {
         unsafe { builder.downcast_unchecked::<PyMapping>() }.set_item(key, value)
     }
 
-    fn finish(builder: Self::Builder) -> PyResult<Bound<'py, PyMapping>> {
+    fn finish<'py>(builder: Self::Builder<'py>) -> PyResult<Bound<'py, PyMapping>> {
         Ok(unsafe { builder.into_any().downcast_into_unchecked() })
     }
 }
