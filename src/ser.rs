@@ -9,7 +9,6 @@ use serde::{ser, Serialize};
 
 use crate::error::{PythonizeError, Result};
 
-// TODO: move 'py lifetime into builder once GATs are available in MSRV
 /// Trait for types which can represent a Python mapping
 pub trait PythonizeMappingType {
     /// Builder type for Python mappings
@@ -29,7 +28,6 @@ pub trait PythonizeMappingType {
     fn finish<'py>(builder: Self::Builder<'py>) -> PyResult<Bound<'py, PyMapping>>;
 }
 
-// TODO: move 'py lifetime into builder once GATs are available in MSRV
 /// Trait for types which can represent a Python mapping and have a name
 pub trait PythonizeNamedMappingType {
     /// Builder type for Python mappings with a name
@@ -65,7 +63,6 @@ pub trait PythonizeListType: Sized {
         U: ExactSizeIterator<Item = T>;
 }
 
-// TODO: remove 'py lifetime once GATs are available in MSRV
 /// Custom types for serialization
 pub trait PythonizeTypes {
     /// Python map type (should be representable as python mapping)
