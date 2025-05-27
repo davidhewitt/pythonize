@@ -99,7 +99,7 @@ impl PythonizeMappingType for PyDict {
 ///
 /// This adapter is commonly applied to use the same unnamed mapping type for
 /// both [`PythonizeTypes::Map`] and [`PythonizeTypes::NamedMap`] while only
-// /// implementing [`PythonizeMappingType`].
+/// implementing [`PythonizeMappingType`].
 pub struct PythonizeUnnamedMappingAdapter<T: PythonizeMappingType> {
     _unnamed: T,
 }
