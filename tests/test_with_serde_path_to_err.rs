@@ -13,9 +13,9 @@ struct Root<T> {
     root_map: BTreeMap<String, Nested<T>>,
 }
 
-impl<'py, T> PythonizeTypes<'py> for Root<T> {
+impl<'py, T> PythonizeTypes for Root<T> {
     type Map = PyDict;
-    type NamedMap = PythonizeUnnamedMappingAdapter<'py, PyDict>;
+    type NamedMap = PythonizeUnnamedMappingAdapter<PyDict>;
     type List = PyList;
 }
 
