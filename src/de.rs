@@ -121,7 +121,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             self.deserialize_str(visitor)
         }
         // Continue with cases which are slower to check because they go
-        // throuh `isinstance` machinery
+        // through `isinstance` machinery
         else if obj.is_instance_of::<PyBytes>() || obj.is_instance_of::<PyByteArray>() {
             self.deserialize_bytes(visitor)
         } else if obj.is_instance_of::<PyFloat>() {
@@ -826,7 +826,7 @@ mod test {
     #[test]
     fn test_int_limits() {
         Python::with_gil(|py| {
-            // serde_json::Value supports u64 and i64 as maxiumum sizes
+            // serde_json::Value supports u64 and i64 as maximum sizes
             let _: serde_json::Value = depythonize(&u8::MAX.into_pyobject(py).unwrap()).unwrap();
             let _: serde_json::Value = depythonize(&u8::MIN.into_pyobject(py).unwrap()).unwrap();
             let _: serde_json::Value = depythonize(&i8::MAX.into_pyobject(py).unwrap()).unwrap();
