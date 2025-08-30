@@ -632,7 +632,7 @@ mod test {
     where
         T: Serialize,
     {
-        Python::with_gil(|py| -> PyResult<()> {
+        Python::attach(|py| -> PyResult<()> {
             let obj = pythonize(py, &src)?;
 
             let locals = PyDict::new(py);
@@ -845,7 +845,7 @@ mod test {
         // serde treats &[u8] as a sequence of integers due to lack of specialization
         test_ser(b"foo", "[102,111,111]");
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             assert!(pythonize(py, serde_bytes::Bytes::new(b"foo"))
                 .expect("bytes will always serialize successfully")
                 .eq(&PyBytes::new(py, b"foo"))

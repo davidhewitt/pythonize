@@ -1,3 +1,17 @@
+## 0.26.0 - 2025-08-30
+
+### Packaging
+- Bump MSRV to 1.74
+- Update to PyO3 0.26
+
+### Changed
+- `PythonizeTypes`, `PythonizeMappingType` and `PythonizeNamedMappingType` no longer have a lifetime on the trait, instead the `Builder` type is a GAT.
+
+## 0.25.0 - 2025-05-23
+
+### Packaging
+- Update to PyO3 0.25
+
 ## 0.24.0 - 2025-03-26
 
 ### Packaging

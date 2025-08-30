@@ -73,7 +73,7 @@ pub enum ErrorImpl {
     Message(String),
     /// A Python type not supported by the deserializer
     UnsupportedType(String),
-    /// A `PyAny` object that failed to downcast to an expected Python type
+    /// A `PyAny` object that failed to cast to an expected Python type
     UnexpectedType(String),
     /// Dict keys should be strings to deserialize to struct fields
     DictKeyNotString,
