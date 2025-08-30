@@ -24,7 +24,7 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
     }
 
     fn sequence_access(&self, expected_len: Option<usize>) -> Result<PySequenceAccess<'a, 'py>> {
-        let seq = self.input.downcast::<PySequence>()?;
+        let seq = self.input.cast::<PySequence>()?;
         let len = self.input.len()?;
 
         match expected_len {
@@ -36,10 +36,10 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
     }
 
     fn set_access(&self) -> Result<PySetAsSequence<'py>> {
-        match self.input.downcast::<PySet>() {
+        match self.input.cast::<PySet>() {
             Ok(set) => Ok(PySetAsSequence::from_set(set)),
             Err(e) => {
-                if let Ok(f) = self.input.downcast::<PyFrozenSet>() {
+                if let Ok(f) = self.input.cast::<PyFrozenSet>() {
                     Ok(PySetAsSequence::from_frozenset(f))
                 } else {
                     Err(e.into())
@@ -49,7 +49,7 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
     }
 
     fn dict_access(&self) -> Result<PyMappingAccess<'py>> {
-        PyMappingAccess::new(self.input.downcast()?)
+        PyMappingAccess::new(self.input.cast()?)
     }
 
     fn deserialize_any_int<'de, V>(&self, int: &Bound<'_, PyInt>, visitor: V) -> Result<V::Value>
@@ -111,7 +111,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             self.deserialize_unit(visitor)
         } else if obj.is_instance_of::<PyBool>() {
             self.deserialize_bool(visitor)
-        } else if let Ok(x) = obj.downcast::<PyInt>() {
+        } else if let Ok(x) = obj.cast::<PyInt>() {
             self.deserialize_any_int(x, visitor)
         } else if obj.is_instance_of::<PyList>() || obj.is_instance_of::<PyTuple>() {
             self.deserialize_tuple(obj.len()?, visitor)
@@ -128,9 +128,9 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             self.deserialize_f64(visitor)
         } else if obj.is_instance_of::<PyFrozenSet>() || obj.is_instance_of::<PySet>() {
             self.deserialize_seq(visitor)
-        } else if obj.downcast::<PySequence>().is_ok() {
+        } else if obj.cast::<PySequence>().is_ok() {
             self.deserialize_tuple(obj.len()?, visitor)
-        } else if obj.downcast::<PyMapping>().is_ok() {
+        } else if obj.cast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
         } else {
             Err(obj.get_type().qualname().map_or_else(
@@ -151,7 +151,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        let s = self.input.downcast::<PyString>()?.to_cow()?;
+        let s = self.input.cast::<PyString>()?.to_cow()?;
         if s.len() != 1 {
             return Err(PythonizeError::invalid_length_char());
         }
@@ -175,7 +175,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        let s = self.input.downcast::<PyString>()?;
+        let s = self.input.cast::<PyString>()?;
         visitor.visit_str(&s.to_cow()?)
     }
 
@@ -190,7 +190,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        let b = self.input.downcast::<PyBytes>()?;
+        let b = self.input.cast::<PyBytes>()?;
         visitor.visit_bytes(b.as_bytes())
     }
 
@@ -303,9 +303,9 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
         V: de::Visitor<'de>,
     {
         let item = &self.input;
-        if let Ok(s) = item.downcast::<PyString>() {
+        if let Ok(s) = item.cast::<PyString>() {
             visitor.visit_enum(s.to_cow()?.into_deserializer())
-        } else if let Ok(m) = item.downcast::<PyMapping>() {
+        } else if let Ok(m) = item.cast::<PyMapping>() {
             // Get the enum variant from the mapping key
             if m.len()? != 1 {
                 return Err(PythonizeError::invalid_length_enum());
@@ -313,7 +313,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             let variant: Bound<PyString> = m
                 .keys()?
                 .get_item(0)?
-                .downcast_into::<PyString>()
+                .cast_into::<PyString>()
                 .map_err(|_| PythonizeError::dict_key_not_string())?;
             let value = m.get_item(&variant)?;
             visitor.visit_enum(PyEnumAccess::new(&value, variant))
@@ -328,7 +328,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     {
         let s = self
             .input
-            .downcast::<PyString>()
+            .cast::<PyString>()
             .map_err(|_| PythonizeError::dict_key_not_string())?;
         visitor.visit_str(&s.to_cow()?)
     }
@@ -528,7 +528,7 @@ mod test {
     where
         T: de::DeserializeOwned + PartialEq + std::fmt::Debug,
     {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let obj = py.eval(code, None, None).unwrap();
             let actual: T = depythonize(&obj).unwrap();
             assert_eq!(&actual, expected);
@@ -585,7 +585,7 @@ mod test {
 
         let code = c_str!("{'foo': 'Foo'}");
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let locals = PyDict::new(py);
             let obj = py.eval(code, None, Some(&locals)).unwrap();
             assert!(matches!(
@@ -613,7 +613,7 @@ mod test {
 
         let code = c_str!("('cat', -10.05, 'foo')");
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let locals = PyDict::new(py);
             let obj = py.eval(code, None, Some(&locals)).unwrap();
             assert!(matches!(
@@ -825,7 +825,7 @@ mod test {
 
     #[test]
     fn test_int_limits() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             // serde_json::Value supports u64 and i64 as maximum sizes
             let _: serde_json::Value = depythonize(&u8::MAX.into_pyobject(py).unwrap()).unwrap();
             let _: serde_json::Value = depythonize(&u8::MIN.into_pyobject(py).unwrap()).unwrap();
@@ -857,7 +857,7 @@ mod test {
 
     #[test]
     fn test_deserialize_bytes() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let obj = PyBytes::new(py, "hello".as_bytes());
             let actual: Vec<u8> = depythonize(&obj).unwrap();
             assert_eq!(actual, b"hello");
@@ -874,7 +874,7 @@ mod test {
 
     #[test]
     fn test_unknown_type() {
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let obj = py
                 .import("decimal")
                 .unwrap()

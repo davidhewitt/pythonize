@@ -40,7 +40,7 @@ impl Serialize for CannotSerialize {
 
 #[test]
 fn test_de_valid() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let pyroot = PyDict::new(py);
         pyroot.set_item("root_key", "root_value").unwrap();
 
@@ -82,7 +82,7 @@ fn test_de_valid() {
 
 #[test]
 fn test_de_invalid() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let pyroot = PyDict::new(py);
         pyroot.set_item("root_key", "root_value").unwrap();
 
@@ -106,7 +106,7 @@ fn test_de_invalid() {
 
 #[test]
 fn test_ser_valid() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let root = Root {
             root_key: String::from("root_value"),
             root_map: BTreeMap::from([
@@ -128,7 +128,7 @@ fn test_ser_valid() {
         let ser = pythonize::Pythonizer::<Root<String>>::from(py);
         let pyroot: Bound<'_, PyAny> = serde_path_to_error::serialize(&root, ser).unwrap();
 
-        let pyroot = pyroot.downcast::<PyDict>().unwrap();
+        let pyroot = pyroot.cast::<PyDict>().unwrap();
         assert_eq!(pyroot.len(), 2);
 
         let root_value: String = pyroot
@@ -181,7 +181,7 @@ fn test_ser_valid() {
 
 #[test]
 fn test_ser_invalid() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let root = Root {
             root_key: String::from("root_value"),
             root_map: BTreeMap::from([

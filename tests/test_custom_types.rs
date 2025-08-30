@@ -4,7 +4,7 @@ use pyo3::{
     exceptions::{PyIndexError, PyKeyError},
     prelude::*,
     types::{PyDict, PyMapping, PySequence, PyTuple},
-    BoundObject,
+    IntoPyObjectExt,
 };
 use pythonize::{
     depythonize, pythonize_custom, PythonizeListType, PythonizeMappingType,
@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 
 #[pyclass(sequence)]
 struct CustomList {
-    items: Vec<PyObject>,
+    items: Vec<Py<PyAny>>,
 }
 
 #[pymethods]
@@ -24,7 +24,7 @@ impl CustomList {
         self.items.len()
     }
 
-    fn __getitem__(&self, idx: isize) -> PyResult<PyObject> {
+    fn __getitem__(&self, idx: isize) -> PyResult<Py<PyAny>> {
         self.items
             .get(idx as usize)
             .cloned()
@@ -46,14 +46,12 @@ impl PythonizeListType for CustomList {
             CustomList {
                 items: elements
                     .into_iter()
-                    .map(|item| item.into_pyobject(py).map(|x| x.into_any().unbind()))
-                    .collect::<Result<Vec<_>, T::Error>>()
-                    .map_err(Into::into)?,
+                    .map(|item| item.into_py_any(py))
+                    .collect::<PyResult<_>>()?,
             },
-        )?
-        .into_any();
+        )?;
 
-        Ok(unsafe { sequence.downcast_into_unchecked() })
+        Ok(unsafe { sequence.cast_into_unchecked() })
     }
 }
 
@@ -66,7 +64,7 @@ impl<'py> PythonizeTypes for PythonizeCustomList {
 
 #[test]
 fn test_custom_list() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         PySequence::register::<CustomList>(py).unwrap();
         let serialized = pythonize_custom::<PythonizeCustomList, _>(py, &json!([1, 2, 3])).unwrap();
         assert!(serialized.is_instance_of::<CustomList>());
@@ -78,7 +76,7 @@ fn test_custom_list() {
 
 #[pyclass(mapping)]
 struct CustomDict {
-    items: HashMap<String, PyObject>,
+    items: HashMap<String, Py<PyAny>>,
 }
 
 #[pymethods]
@@ -87,14 +85,14 @@ impl CustomDict {
         self.items.len()
     }
 
-    fn __getitem__(&self, key: String) -> PyResult<PyObject> {
+    fn __getitem__(&self, key: String) -> PyResult<Py<PyAny>> {
         self.items
             .get(&key)
             .cloned()
             .ok_or_else(|| PyKeyError::new_err(key))
     }
 
-    fn __setitem__(&mut self, key: String, value: PyObject) {
+    fn __setitem__(&mut self, key: String, value: Py<PyAny>) {
         self.items.insert(key, value);
     }
 
@@ -102,7 +100,7 @@ impl CustomDict {
         self.items.keys().collect()
     }
 
-    fn values(&self) -> Vec<PyObject> {
+    fn values(&self) -> Vec<Py<PyAny>> {
         self.items.values().cloned().collect()
     }
 }
@@ -124,11 +122,11 @@ impl PythonizeMappingType for CustomDict {
         key: Bound<'py, PyAny>,
         value: Bound<'py, PyAny>,
     ) -> PyResult<()> {
-        unsafe { builder.downcast_unchecked::<PyMapping>() }.set_item(key, value)
+        unsafe { builder.cast_unchecked::<PyMapping>() }.set_item(key, value)
     }
 
     fn finish<'py>(builder: Self::Builder<'py>) -> PyResult<Bound<'py, PyMapping>> {
-        Ok(unsafe { builder.into_any().downcast_into_unchecked() })
+        Ok(unsafe { builder.cast_into_unchecked() })
     }
 }
 
@@ -141,7 +139,7 @@ impl<'py> PythonizeTypes for PythonizeCustomDict {
 
 #[test]
 fn test_custom_dict() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         PyMapping::register::<CustomDict>(py).unwrap();
         let serialized =
             pythonize_custom::<PythonizeCustomDict, _>(py, &json!({ "hello": 1, "world": 2 }))
@@ -155,7 +153,7 @@ fn test_custom_dict() {
 
 #[test]
 fn test_tuple() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         PyMapping::register::<CustomDict>(py).unwrap();
         let serialized =
             pythonize_custom::<PythonizeCustomDict, _>(py, &json!([1, 2, 3, 4])).unwrap();
@@ -169,7 +167,7 @@ fn test_tuple() {
 #[test]
 fn test_pythonizer_can_be_created() {
     // https://github.com/davidhewitt/pythonize/pull/56
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let sample = json!({ "hello": 1, "world": 2 });
         assert!(sample
             .serialize(Pythonizer::new(py))
@@ -186,7 +184,7 @@ fn test_pythonizer_can_be_created() {
 #[pyclass(mapping)]
 struct NamedCustomDict {
     name: String,
-    items: HashMap<String, PyObject>,
+    items: HashMap<String, Py<PyAny>>,
 }
 
 #[pymethods]
@@ -195,14 +193,14 @@ impl NamedCustomDict {
         self.items.len()
     }
 
-    fn __getitem__(&self, key: String) -> PyResult<PyObject> {
+    fn __getitem__(&self, key: String) -> PyResult<Py<PyAny>> {
         self.items
             .get(&key)
             .cloned()
             .ok_or_else(|| PyKeyError::new_err(key))
     }
 
-    fn __setitem__(&mut self, key: String, value: PyObject) {
+    fn __setitem__(&mut self, key: String, value: Py<PyAny>) {
         self.items.insert(key, value);
     }
 
@@ -210,7 +208,7 @@ impl NamedCustomDict {
         self.items.keys().collect()
     }
 
-    fn values(&self) -> Vec<PyObject> {
+    fn values(&self) -> Vec<Py<PyAny>> {
         self.items.values().cloned().collect()
     }
 }
@@ -237,11 +235,11 @@ impl PythonizeNamedMappingType for NamedCustomDict {
         name: Bound<'py, pyo3::types::PyString>,
         value: Bound<'py, PyAny>,
     ) -> PyResult<()> {
-        unsafe { builder.downcast_unchecked::<PyMapping>() }.set_item(name, value)
+        unsafe { builder.cast_unchecked::<PyMapping>() }.set_item(name, value)
     }
 
     fn finish<'py>(builder: Self::Builder<'py>) -> PyResult<Bound<'py, PyMapping>> {
-        Ok(unsafe { builder.into_any().downcast_into_unchecked() })
+        Ok(unsafe { builder.cast_into_unchecked() })
     }
 }
 
@@ -260,7 +258,7 @@ struct Struct {
 
 #[test]
 fn test_custom_unnamed_dict() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         PyMapping::register::<CustomDict>(py).unwrap();
         let serialized =
             pythonize_custom::<PythonizeCustomDict, _>(py, &Struct { hello: 1, world: 2 }).unwrap();
@@ -273,7 +271,7 @@ fn test_custom_unnamed_dict() {
 
 #[test]
 fn test_custom_named_dict() {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         PyMapping::register::<NamedCustomDict>(py).unwrap();
         let serialized =
             pythonize_custom::<PythonizeNamedCustomDict, _>(py, &Struct { hello: 1, world: 2 })

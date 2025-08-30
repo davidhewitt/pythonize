@@ -35,7 +35,7 @@ let sample = Sample {
     bar: None
 };
 
-Python::with_gil(|py| {
+Python::attach(|py| {
     // Rust -> Python
     let obj =  pythonize(py, &sample).unwrap();
 
