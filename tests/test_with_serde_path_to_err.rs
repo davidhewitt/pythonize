@@ -143,7 +143,7 @@ fn test_ser_valid() {
             .get_item("root_map")
             .unwrap()
             .unwrap()
-            .downcast_into::<PyDict>()
+            .cast_into::<PyDict>()
             .unwrap();
         assert_eq!(root_map.len(), 2);
 
@@ -151,7 +151,7 @@ fn test_ser_valid() {
             .get_item("nested_0")
             .unwrap()
             .unwrap()
-            .downcast_into::<PyDict>()
+            .cast_into::<PyDict>()
             .unwrap();
         assert_eq!(nested_0.len(), 1);
         let nested_key_0: String = nested_0
@@ -166,7 +166,7 @@ fn test_ser_valid() {
             .get_item("nested_1")
             .unwrap()
             .unwrap()
-            .downcast_into::<PyDict>()
+            .cast_into::<PyDict>()
             .unwrap();
         assert_eq!(nested_1.len(), 1);
         let nested_key_1: String = nested_1

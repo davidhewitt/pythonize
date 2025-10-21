@@ -1,5 +1,5 @@
 use pyo3::PyErr;
-use pyo3::{exceptions::*, DowncastError, DowncastIntoError};
+use pyo3::{exceptions::*, CastError, CastIntoError};
 use serde::{de, ser};
 use std::convert::Infallible;
 use std::error;
@@ -153,18 +153,18 @@ impl From<PyErr> for PythonizeError {
     }
 }
 
-/// Handle errors that occur when attempting to use `PyAny::cast_as`
-impl<'a, 'py> From<DowncastError<'a, 'py>> for PythonizeError {
-    fn from(other: DowncastError<'a, 'py>) -> Self {
+/// Handle errors that occur when attempting to use `PyAny::cast`
+impl<'a, 'py> From<CastError<'a, 'py>> for PythonizeError {
+    fn from(other: CastError<'a, 'py>) -> Self {
         Self {
             inner: Box::new(ErrorImpl::UnexpectedType(other.to_string())),
         }
     }
 }
 
-/// Handle errors that occur when attempting to use `PyAny::cast_as`
-impl<'py> From<DowncastIntoError<'py>> for PythonizeError {
-    fn from(other: DowncastIntoError<'py>) -> Self {
+/// Handle errors that occur when attempting to use `PyAny::cast`
+impl<'py> From<CastIntoError<'py>> for PythonizeError {
+    fn from(other: CastIntoError<'py>) -> Self {
         Self {
             inner: Box::new(ErrorImpl::UnexpectedType(other.to_string())),
         }
