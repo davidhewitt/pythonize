@@ -49,17 +49,21 @@ jobs:
     strategy:
       fail-fast: false # If one platform fails, allow the rest to keep testing.
       matrix:
-        python-architecture: ["x64"]
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.13t"]
-        os: ["macos-13", "ubuntu-latest", "windows-latest"]
+        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.14t"]
+        os: ["macos-latest", "ubuntu-latest", "windows-latest"]
         rust: [stable]
         include:
-          - python-version: "3.13"
+          - python-version: "3.14"
             os: "ubuntu-latest"
             rust: ${{ needs.resolve.outputs.MSRV }}
-          - python-version: "3.13"
-            python-architecture: "arm64"
-            os: "macos-latest"
+          - python-version: "3.14"
+            os: "macos-15-intel"
+            rust: "stable"
+          - python-version: "3.14"
+            os: "ubuntu-24.04-arm"
+            rust: "stable"
+          - python-version: "3.14"
+            os: "windows-11-arm"
             rust: "stable"
 
     steps:
@@ -69,7 +73,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-          architecture: ${{ matrix.python-python-architecture }}
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@master
@@ -88,9 +91,7 @@ jobs:
       - name: Test
         run: cargo test --verbose
 
-      # https://github.com/PyO3/pyo3/issues/4709 - can't use abi3 w. freethreaded build
-      - if: ${{ !endsWith(matrix.python-version, 't') }}
-        name: Test (abi3)
+      - name: Test (abi3)
         run: cargo test --verbose --features pyo3/abi3-py37
 
     env:
