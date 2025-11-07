@@ -100,7 +100,10 @@ fn test_de_invalid() {
         let err = serde_path_to_error::deserialize::<_, Root<String>>(de).unwrap_err();
 
         assert_eq!(err.path().to_string(), "root_map.nested_1.nested_key");
-        assert_eq!(err.to_string(), "root_map.nested_1.nested_key: unexpected type: 'int' object cannot be converted to 'PyString'");
+        assert_eq!(
+            err.to_string(),
+            "root_map.nested_1.nested_key: unexpected type: 'int' object cannot be cast as 'str'"
+        );
     })
 }
 
@@ -143,7 +146,7 @@ fn test_ser_valid() {
             .get_item("root_map")
             .unwrap()
             .unwrap()
-            .downcast_into::<PyDict>()
+            .cast_into::<PyDict>()
             .unwrap();
         assert_eq!(root_map.len(), 2);
 
@@ -151,7 +154,7 @@ fn test_ser_valid() {
             .get_item("nested_0")
             .unwrap()
             .unwrap()
-            .downcast_into::<PyDict>()
+            .cast_into::<PyDict>()
             .unwrap();
         assert_eq!(nested_0.len(), 1);
         let nested_key_0: String = nested_0
@@ -166,7 +169,7 @@ fn test_ser_valid() {
             .get_item("nested_1")
             .unwrap()
             .unwrap()
-            .downcast_into::<PyDict>()
+            .cast_into::<PyDict>()
             .unwrap();
         assert_eq!(nested_1.len(), 1);
         let nested_key_1: String = nested_1
