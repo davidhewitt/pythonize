@@ -522,7 +522,7 @@ mod test {
     use maplit::hashmap;
     use pyo3::ffi::c_str;
     use pyo3::{IntoPyObject, Python};
-    use serde_json::{json, Value as JsonValue};
+    use sonic_rs::{json, Value as JsonValue};
 
     fn test_de<T>(code: &CStr, expected: &T, expected_json: &JsonValue)
     where
@@ -826,26 +826,26 @@ mod test {
     #[test]
     fn test_int_limits() {
         Python::attach(|py| {
-            // serde_json::Value supports u64 and i64 as maximum sizes
-            let _: serde_json::Value = depythonize(&u8::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&u8::MIN.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i8::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i8::MIN.into_pyobject(py).unwrap()).unwrap();
+            // sonic_rs::Value supports u64 and i64 as maximum sizes
+            let _: sonic_rs::Value = depythonize(&u8::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u8::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i8::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i8::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: serde_json::Value = depythonize(&u16::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&u16::MIN.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i16::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i16::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u16::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u16::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i16::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i16::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: serde_json::Value = depythonize(&u32::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&u32::MIN.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i32::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i32::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u32::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u32::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i32::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i32::MIN.into_pyobject(py).unwrap()).unwrap();
 
-            let _: serde_json::Value = depythonize(&u64::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&u64::MIN.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i64::MAX.into_pyobject(py).unwrap()).unwrap();
-            let _: serde_json::Value = depythonize(&i64::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u64::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&u64::MIN.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i64::MAX.into_pyobject(py).unwrap()).unwrap();
+            let _: sonic_rs::Value = depythonize(&i64::MIN.into_pyobject(py).unwrap()).unwrap();
 
             let _: u128 = depythonize(&u128::MAX.into_pyobject(py).unwrap()).unwrap();
             let _: i128 = depythonize(&u128::MIN.into_pyobject(py).unwrap()).unwrap();
@@ -882,7 +882,7 @@ mod test {
                 .unwrap()
                 .call0()
                 .unwrap();
-            let err = depythonize::<serde_json::Value>(&obj).unwrap_err();
+            let err = depythonize::<sonic_rs::Value>(&obj).unwrap_err();
             assert!(matches!(
                 *err.inner,
                 ErrorImpl::UnsupportedType(name) if name == "Decimal"

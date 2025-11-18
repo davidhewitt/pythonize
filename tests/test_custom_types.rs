@@ -11,7 +11,7 @@ use pythonize::{
     PythonizeNamedMappingType, PythonizeTypes, PythonizeUnnamedMappingAdapter, Pythonizer,
 };
 use serde::Serialize;
-use serde_json::{json, Value};
+use sonic_rs::{json, Value};
 
 #[pyclass(sequence)]
 struct CustomList {

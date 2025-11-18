@@ -647,7 +647,7 @@ mod test {
             let result = result.extract::<PyBackedStr>()?;
 
             assert_eq!(result, expected);
-            assert_eq!(serde_json::to_string(&src).unwrap(), expected);
+            assert_eq!(sonic_rs::to_string(&src).unwrap(), expected);
 
             Ok(())
         })
