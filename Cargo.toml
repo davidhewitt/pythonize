@@ -13,6 +13,7 @@ documentation = "https://docs.rs/crate/pythonize/"
 
 [dependencies]
 serde = { version = "1.0", default-features = false, features = ["std"] }
+serde_json = { version = "1.0", optional = true }
 pyo3 = { version = "0.27", default-features = false }
 
 [dev-dependencies]
@@ -22,3 +23,6 @@ serde_json = "1.0"
 serde_bytes = "0.11"
 maplit = "1.0.2"
 serde_path_to_error = "0.1.15"
+
+[features]
+arbitrary_precision = ["serde_json", "serde_json/arbitrary_precision"]

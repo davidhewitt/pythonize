@@ -4,6 +4,9 @@ use serde::Deserialize;
 
 use crate::error::{ErrorImpl, PythonizeError, Result};
 
+#[cfg(feature = "arbitrary_precision")]
+const TOKEN: &str = "$serde_json::private::Number";
+
 /// Attempt to convert a Python object to an instance of `T`
 pub fn depythonize<'a, 'py, T>(obj: &'a Bound<'py, PyAny>) -> Result<T>
 where
@@ -68,8 +71,7 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
             } else {
                 visitor.visit_u128(x)
             }
-        } else {
-            let x: i128 = int.extract()?;
+        } else if let Ok(x) = int.extract::<i128>() {
             if let Ok(x) = i8::try_from(x) {
                 visitor.visit_i8(x)
             } else if let Ok(x) = i16::try_from(x) {
@@ -80,6 +82,19 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
                 visitor.visit_i64(x)
             } else {
                 visitor.visit_i128(x)
+            }
+        } else {
+            #[cfg(feature = "arbitrary_precision")]
+            {
+                visitor.visit_map(NumberDeserializer {
+                    number: Some(int.to_string()),
+                })
+            }
+            #[cfg(not(feature = "arbitrary_precision"))]
+            {
+                // Re-attempt to return the original error.
+                let _: i128 = int.extract()?;
+                unreachable!()
             }
         }
     }
@@ -510,6 +525,34 @@ impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
         V: de::Visitor<'de>,
     {
         visitor.visit_map(self.de.dict_access()?)
+    }
+}
+
+// See serde_json
+#[cfg(feature = "arbitrary_precision")]
+struct NumberDeserializer {
+    number: Option<String>,
+}
+
+#[cfg(feature = "arbitrary_precision")]
+impl<'de> de::MapAccess<'de> for NumberDeserializer {
+    type Error = PythonizeError;
+
+    fn next_key_seed<K>(&mut self, seed: K) -> Result<Option<K::Value>>
+    where
+        K: de::DeserializeSeed<'de>,
+    {
+        if self.number.is_none() {
+            return Ok(None);
+        }
+        seed.deserialize(TOKEN.into_deserializer()).map(Some)
+    }
+
+    fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
+    where
+        V: de::DeserializeSeed<'de>,
+    {
+        seed.deserialize(self.number.take().unwrap().into_deserializer())
     }
 }
 
