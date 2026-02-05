@@ -1,3 +1,7 @@
+## Unreleased
+
+- Update `pyo3` to 0.28.
+
 ## 0.27.0 - 2025-11-07
 - Update to PyO3 0.27
 
