@@ -102,7 +102,7 @@ fn test_de_invalid() {
         assert_eq!(err.path().to_string(), "root_map.nested_1.nested_key");
         assert_eq!(
             err.to_string(),
-            "root_map.nested_1.nested_key: unexpected type: 'int' object cannot be cast as 'str'"
+            "root_map.nested_1.nested_key: unexpected type: 'int' object is not an instance of 'str'"
         );
     })
 }
