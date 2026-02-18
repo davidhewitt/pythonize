@@ -1,11 +1,11 @@
 use std::marker::PhantomData;
 
+#[cfg(feature = "arbitrary_precision")]
+use pyo3::types::{PyAnyMethods, PyFloat, PyInt};
 use pyo3::types::{
     PyDict, PyDictMethods, PyList, PyListMethods, PyMapping, PySequence, PyString, PyTuple,
     PyTupleMethods,
 };
-#[cfg(feature = "arbitrary_precision")]
-use pyo3::types::{PyAnyMethods, PyFloat, PyInt};
 use pyo3::{Bound, BoundObject, IntoPyObject, PyAny, PyResult, Python};
 use serde::{ser, Serialize};
 
@@ -452,11 +452,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
         })
     }
 
-    fn serialize_struct(
-        self,
-        name: &'static str,
-        len: usize,
-    ) -> Result<StructSerializer<'py, P>> {
+    fn serialize_struct(self, name: &'static str, len: usize) -> Result<StructSerializer<'py, P>> {
         #[cfg(feature = "arbitrary_precision")]
         {
             // With arbitrary_precision enabled, a serde_json::Number serializes as a "$serde_json::private::Number"
@@ -622,7 +618,9 @@ impl<'py, P: PythonizeTypes> ser::SerializeStruct for StructSerializer<'py, P> {
             StructSerializer::Number { number_string, .. } => {
                 let serde_json::Value::String(s) = value
                     .serialize(serde_json::value::Serializer)
-                    .map_err(|e| PythonizeError::msg(format!("Failed to serialize number: {}", e)))?
+                    .map_err(|e| {
+                    PythonizeError::msg(format!("Failed to serialize number: {}", e))
+                })?
                 else {
                     return Err(PythonizeError::msg("Expected string in serde_json::Number"));
                 };
@@ -637,7 +635,9 @@ impl<'py, P: PythonizeTypes> ser::SerializeStruct for StructSerializer<'py, P> {
         match self {
             StructSerializer::Struct(s) => s.end(),
             StructSerializer::Number {
-                py, number_string: Some(s), ..
+                py,
+                number_string: Some(s),
+                ..
             } => {
                 if let Ok(i) = s.parse::<i64>() {
                     return Ok(PyInt::new(py, i).into_any());
