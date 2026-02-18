@@ -2,6 +2,7 @@
 
 - Bump MSRV to 1.83.
 - Update `pyo3` to 0.28.
+- Support deserializing `dataclass` instances to struct-like Rust types.
 - Add `arbitrary_precision` feature
 
 ## 0.27.0 - 2025-11-07
