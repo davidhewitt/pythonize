@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+#[cfg(feature = "arbitrary_precision")]
+use pyo3::types::{PyAnyMethods, PyFloat, PyInt};
 use pyo3::types::{
     PyDict, PyDictMethods, PyList, PyListMethods, PyMapping, PySequence, PyString, PyTuple,
     PyTupleMethods,
@@ -229,6 +231,21 @@ pub struct PythonStructVariantSerializer<'py, P: PythonizeTypes> {
     inner: PythonStructDictSerializer<'py, P>,
 }
 
+#[cfg(feature = "arbitrary_precision")]
+#[doc(hidden)]
+pub enum StructSerializer<'py, P: PythonizeTypes> {
+    Struct(PythonStructDictSerializer<'py, P>),
+    Number {
+        py: Python<'py>,
+        number_string: Option<String>,
+        _types: PhantomData<P>,
+    },
+}
+
+#[cfg(not(feature = "arbitrary_precision"))]
+#[doc(hidden)]
+pub type StructSerializer<'py, P> = PythonStructDictSerializer<'py, P>;
+
 #[doc(hidden)]
 pub struct PythonStructDictSerializer<'py, P: PythonizeTypes> {
     py: Python<'py>,
@@ -266,7 +283,7 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     type SerializeTupleStruct = PythonCollectionSerializer<'py, P>;
     type SerializeTupleVariant = PythonTupleVariantSerializer<'py, P>;
     type SerializeMap = PythonMapSerializer<'py, P>;
-    type SerializeStruct = PythonStructDictSerializer<'py, P>;
+    type SerializeStruct = StructSerializer<'py, P>;
     type SerializeStructVariant = PythonStructVariantSerializer<'py, P>;
 
     fn serialize_bool(self, v: bool) -> Result<Bound<'py, PyAny>> {
@@ -435,16 +452,34 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
         })
     }
 
-    fn serialize_struct(
-        self,
-        name: &'static str,
-        len: usize,
-    ) -> Result<PythonStructDictSerializer<'py, P>> {
-        Ok(PythonStructDictSerializer {
-            py: self.py,
-            builder: P::NamedMap::builder(self.py, len, name)?,
-            _types: PhantomData,
-        })
+    fn serialize_struct(self, name: &'static str, len: usize) -> Result<StructSerializer<'py, P>> {
+        #[cfg(feature = "arbitrary_precision")]
+        {
+            // With arbitrary_precision enabled, a serde_json::Number serializes as a "$serde_json::private::Number"
+            // struct with a "$serde_json::private::Number" field, whose value is the String in Number::n.
+            if name == "$serde_json::private::Number" && len == 1 {
+                return Ok(StructSerializer::Number {
+                    py: self.py,
+                    number_string: None,
+                    _types: PhantomData,
+                });
+            }
+
+            Ok(StructSerializer::Struct(PythonStructDictSerializer {
+                py: self.py,
+                builder: P::NamedMap::builder(self.py, len, name)?,
+                _types: PhantomData,
+            }))
+        }
+
+        #[cfg(not(feature = "arbitrary_precision"))]
+        {
+            Ok(PythonStructDictSerializer {
+                py: self.py,
+                builder: P::NamedMap::builder(self.py, len, name)?,
+                _types: PhantomData,
+            })
+        }
     }
 
     fn serialize_struct_variant(
@@ -566,6 +601,62 @@ impl<'py, P: PythonizeTypes> ser::SerializeMap for PythonMapSerializer<'py, P> {
 
     fn end(self) -> Result<Bound<'py, PyAny>> {
         Ok(P::Map::finish(self.builder)?.into_any())
+    }
+}
+
+#[cfg(feature = "arbitrary_precision")]
+impl<'py, P: PythonizeTypes> ser::SerializeStruct for StructSerializer<'py, P> {
+    type Ok = Bound<'py, PyAny>;
+    type Error = PythonizeError;
+
+    fn serialize_field<T>(&mut self, key: &'static str, value: &T) -> Result<()>
+    where
+        T: ?Sized + Serialize,
+    {
+        match self {
+            StructSerializer::Struct(s) => s.serialize_field(key, value),
+            StructSerializer::Number { number_string, .. } => {
+                let serde_json::Value::String(s) = value
+                    .serialize(serde_json::value::Serializer)
+                    .map_err(|e| {
+                    PythonizeError::msg(format!("Failed to serialize number: {}", e))
+                })?
+                else {
+                    return Err(PythonizeError::msg("Expected string in serde_json::Number"));
+                };
+
+                *number_string = Some(s);
+                Ok(())
+            }
+        }
+    }
+
+    fn end(self) -> Result<Bound<'py, PyAny>> {
+        match self {
+            StructSerializer::Struct(s) => s.end(),
+            StructSerializer::Number {
+                py,
+                number_string: Some(s),
+                ..
+            } => {
+                if let Ok(i) = s.parse::<i64>() {
+                    return Ok(PyInt::new(py, i).into_any());
+                }
+                if let Ok(u) = s.parse::<u64>() {
+                    return Ok(PyInt::new(py, u).into_any());
+                }
+                if s.chars().any(|c| c == '.' || c == 'e' || c == 'E') {
+                    if let Ok(f) = s.parse::<f64>() {
+                        return Ok(PyFloat::new(py, f).into_any());
+                    }
+                }
+                // Fall back to Python's int() constructor, which supports arbitrary precision.
+                py.get_type::<PyInt>()
+                    .call1((s.as_str(),))
+                    .map_err(|e| PythonizeError::msg(format!("Invalid number: {}", e)))
+            }
+            StructSerializer::Number { .. } => Err(PythonizeError::msg("Empty serde_json::Number")),
+        }
     }
 }
 
