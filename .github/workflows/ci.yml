@@ -94,6 +94,9 @@ jobs:
       - name: Test (abi3)
         run: cargo test --verbose --features pyo3/abi3-py37
 
+      - name: Test (arbitrary_precision)
+        run: cargo test --verbose --features arbitrary_precision
+
     env:
       RUST_BACKTRACE: 1
 

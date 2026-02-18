@@ -17,7 +17,7 @@ Pythonize has two main public APIs: `pythonize` and `depythonize`.
 [Serde]: https://github.com/serde-rs/serde
 [PyO3]: https://github.com/PyO3/pyo3
 
-# Examples
+## Examples
 
 ```rust
 use serde::{Serialize, Deserialize};
@@ -46,4 +46,15 @@ Python::attach(|py| {
 
     assert_eq!(new_sample, sample);
 })
+```
+
+## Features
+
+### `arbitrary_precision`
+
+Enable support for `serde_json`'s `arbitrary_precision` feature, which allows handling numbers that exceed the range of `i128`/`u128` when converting `serde_json::Value` to and from Python.
+
+```toml
+[dependencies]
+pythonize = { version = "0.28", features = ["arbitrary_precision"] }
 ```
