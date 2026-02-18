@@ -622,7 +622,6 @@ impl<'py, P: PythonizeTypes> ser::SerializeStructVariant for PythonStructVariant
 mod test {
     use super::pythonize;
     use maplit::hashmap;
-    use pyo3::ffi::c_str;
     use pyo3::prelude::*;
     use pyo3::pybacked::PyBackedStr;
     use pyo3::types::{PyBytes, PyDict};
@@ -639,7 +638,7 @@ mod test {
             locals.set_item("obj", obj)?;
 
             py.run(
-                c_str!("import json; result = json.dumps(obj, separators=(',', ':'))"),
+                c"import json; result = json.dumps(obj, separators=(',', ':'))",
                 None,
                 Some(&locals),
             )?;

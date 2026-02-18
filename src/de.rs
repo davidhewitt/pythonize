@@ -520,7 +520,6 @@ mod test {
     use super::*;
     use crate::error::ErrorImpl;
     use maplit::hashmap;
-    use pyo3::ffi::c_str;
     use pyo3::{IntoPyObject, Python};
     use serde_json::{json, Value as JsonValue};
 
@@ -545,7 +544,7 @@ mod test {
 
         let expected = Empty;
         let expected_json = json!(null);
-        let code = c_str!("None");
+        let code = c"None";
         test_de(code, &expected, &expected_json);
     }
 
@@ -571,7 +570,7 @@ mod test {
             "baz": 45.23,
             "qux": true
         });
-        let code = c_str!("{'foo': 'Foo', 'bar': 8, 'baz': 45.23, 'qux': True}");
+        let code = c"{'foo': 'Foo', 'bar': 8, 'baz': 45.23, 'qux': True}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -583,7 +582,7 @@ mod test {
             bar: usize,
         }
 
-        let code = c_str!("{'foo': 'Foo'}");
+        let code = c"{'foo': 'Foo'}";
 
         Python::attach(|py| {
             let locals = PyDict::new(py);
@@ -602,7 +601,7 @@ mod test {
 
         let expected = TupleStruct("cat".to_string(), -10.05);
         let expected_json = json!(["cat", -10.05]);
-        let code = c_str!("('cat', -10.05)");
+        let code = c"('cat', -10.05)";
         test_de(code, &expected, &expected_json);
     }
 
@@ -611,7 +610,7 @@ mod test {
         #[derive(Debug, Deserialize, PartialEq)]
         struct TupleStruct(String, f64);
 
-        let code = c_str!("('cat', -10.05, 'foo')");
+        let code = c"('cat', -10.05, 'foo')";
 
         Python::attach(|py| {
             let locals = PyDict::new(py);
@@ -630,7 +629,7 @@ mod test {
 
         let expected = TupleStruct("cat".to_string(), -10.05);
         let expected_json = json!(["cat", -10.05]);
-        let code = c_str!("['cat', -10.05]");
+        let code = c"['cat', -10.05]";
         test_de(code, &expected, &expected_json);
     }
 
@@ -638,7 +637,7 @@ mod test {
     fn test_tuple() {
         let expected = ("foo".to_string(), 5);
         let expected_json = json!(["foo", 5]);
-        let code = c_str!("('foo', 5)");
+        let code = c"('foo', 5)";
         test_de(code, &expected, &expected_json);
     }
 
@@ -646,7 +645,7 @@ mod test {
     fn test_tuple_from_pylist() {
         let expected = ("foo".to_string(), 5);
         let expected_json = json!(["foo", 5]);
-        let code = c_str!("['foo', 5]");
+        let code = c"['foo', 5]";
         test_de(code, &expected, &expected_json);
     }
 
@@ -654,7 +653,7 @@ mod test {
     fn test_vec_from_pyset() {
         let expected = vec!["foo".to_string()];
         let expected_json = json!(["foo"]);
-        let code = c_str!("{'foo'}");
+        let code = c"{'foo'}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -662,7 +661,7 @@ mod test {
     fn test_vec_from_pyfrozenset() {
         let expected = vec!["foo".to_string()];
         let expected_json = json!(["foo"]);
-        let code = c_str!("frozenset({'foo'})");
+        let code = c"frozenset({'foo'})";
         test_de(code, &expected, &expected_json);
     }
 
@@ -670,7 +669,7 @@ mod test {
     fn test_vec() {
         let expected = vec![3, 2, 1];
         let expected_json = json!([3, 2, 1]);
-        let code = c_str!("[3, 2, 1]");
+        let code = c"[3, 2, 1]";
         test_de(code, &expected, &expected_json);
     }
 
@@ -678,7 +677,7 @@ mod test {
     fn test_vec_from_tuple() {
         let expected = vec![3, 2, 1];
         let expected_json = json!([3, 2, 1]);
-        let code = c_str!("(3, 2, 1)");
+        let code = c"(3, 2, 1)";
         test_de(code, &expected, &expected_json);
     }
 
@@ -686,7 +685,7 @@ mod test {
     fn test_hashmap() {
         let expected = hashmap! {"foo".to_string() => 4};
         let expected_json = json!({"foo": 4 });
-        let code = c_str!("{'foo': 4}");
+        let code = c"{'foo': 4}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -699,7 +698,7 @@ mod test {
 
         let expected = Foo::Variant;
         let expected_json = json!("Variant");
-        let code = c_str!("'Variant'");
+        let code = c"'Variant'";
         test_de(code, &expected, &expected_json);
     }
 
@@ -712,7 +711,7 @@ mod test {
 
         let expected = Foo::Tuple(12, "cat".to_string());
         let expected_json = json!({"Tuple": [12, "cat"]});
-        let code = c_str!("{'Tuple': [12, 'cat']}");
+        let code = c"{'Tuple': [12, 'cat']}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -725,7 +724,7 @@ mod test {
 
         let expected = Foo::NewType("cat".to_string());
         let expected_json = json!({"NewType": "cat" });
-        let code = c_str!("{'NewType': 'cat'}");
+        let code = c"{'NewType': 'cat'}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -741,7 +740,7 @@ mod test {
             bar: 25,
         };
         let expected_json = json!({"Struct": {"foo": "cat", "bar": 25 }});
-        let code = c_str!("{'Struct': {'foo': 'cat', 'bar': 25}}");
+        let code = c"{'Struct': {'foo': 'cat', 'bar': 25}}";
         test_de(code, &expected, &expected_json);
     }
     #[test]
@@ -754,7 +753,7 @@ mod test {
 
         let expected = Foo::Tuple(12.0, 'c');
         let expected_json = json!([12.0, 'c']);
-        let code = c_str!("[12.0, 'c']");
+        let code = c"[12.0, 'c']";
         test_de(code, &expected, &expected_json);
     }
 
@@ -768,7 +767,7 @@ mod test {
 
         let expected = Foo::NewType("cat".to_string());
         let expected_json = json!("cat");
-        let code = c_str!("'cat'");
+        let code = c"'cat'";
         test_de(code, &expected, &expected_json);
     }
 
@@ -785,7 +784,7 @@ mod test {
             bar: [2, 5, 3, 1],
         };
         let expected_json = json!({"foo": ["a", "b", "c"], "bar": [2, 5, 3, 1]});
-        let code = c_str!("{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}");
+        let code = c"{'foo': ['a', 'b', 'c'], 'bar': [2, 5, 3, 1]}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -818,8 +817,7 @@ mod test {
         };
         let expected_json =
             json!({"name": "SomeFoo", "bar": { "value": 13, "variant": { "Tuple": [-1.5, 8]}}});
-        let code =
-            c_str!("{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}");
+        let code = c"{'name': 'SomeFoo', 'bar': {'value': 13, 'variant': {'Tuple': [-1.5, 8]}}}";
         test_de(code, &expected, &expected_json);
     }
 
@@ -868,7 +866,7 @@ mod test {
     fn test_char() {
         let expected = 'a';
         let expected_json = json!("a");
-        let code = c_str!("'a'");
+        let code = c"'a'";
         test_de(code, &expected, &expected_json);
     }
 
