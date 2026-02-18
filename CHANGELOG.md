@@ -1,4 +1,7 @@
-## 0.28.0 - 2026-02-17
+## Unreleased
+
+- Bump MSRV to 1.83.
+- Update `pyo3` to 0.28.
 - Add `arbitrary_precision` feature
 
 ## 0.27.0 - 2025-11-07
