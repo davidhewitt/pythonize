@@ -1,4 +1,4 @@
-## Unreleased
+## 0.28.0 - 2026-02-18
 
 - Bump MSRV to 1.83.
 - Update `pyo3` to 0.28.
