@@ -6,7 +6,7 @@ use pyo3::types::{
     PyDict, PyDictMethods, PyList, PyListMethods, PyMapping, PySequence, PyString, PyTuple,
     PyTupleMethods,
 };
-use pyo3::{Bound, BoundObject, IntoPyObject, PyAny, PyResult, Python};
+use pyo3::{Bound, IntoPyObject, IntoPyObjectExt, PyAny, PyResult, Python};
 use serde::{ser, Serialize};
 
 use crate::error::{PythonizeError, Result};
@@ -267,11 +267,8 @@ impl<'py, P: PythonizeTypes> Pythonizer<'py, P> {
     fn serialise_default<T>(self, v: T) -> Result<Bound<'py, PyAny>>
     where
         T: IntoPyObject<'py>,
-        <T as IntoPyObject<'py>>::Error: Into<PythonizeError>,
     {
-        v.into_pyobject(self.py)
-            .map(|x| x.into_any().into_bound())
-            .map_err(Into::into)
+        v.into_bound_py_any(self.py).map_err(Into::into)
     }
 }
 
@@ -306,6 +303,10 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
         self.serialise_default(v)
     }
 
+    fn serialize_i128(self, v: i128) -> Result<Bound<'py, PyAny>> {
+        self.serialise_default(v)
+    }
+
     fn serialize_u8(self, v: u8) -> Result<Bound<'py, PyAny>> {
         self.serialise_default(v)
     }
@@ -319,6 +320,10 @@ impl<'py, P: PythonizeTypes> ser::Serializer for Pythonizer<'py, P> {
     }
 
     fn serialize_u64(self, v: u64) -> Result<Bound<'py, PyAny>> {
+        self.serialise_default(v)
+    }
+
+    fn serialize_u128(self, v: u128) -> Result<Bound<'py, PyAny>> {
         self.serialise_default(v)
     }
 
@@ -874,6 +879,8 @@ mod test {
             f: u16,
             g: u32,
             h: u64,
+            i: i128,
+            j: u128,
         }
 
         test_ser(
@@ -886,8 +893,10 @@ mod test {
                 f: 6,
                 g: 7,
                 h: 8,
+                i: 9,
+                j: 10,
             },
-            r#"{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8}"#,
+            r#"{"a":1,"b":2,"c":3,"d":4,"e":5,"f":6,"g":7,"h":8,"i":9,"j":10}"#,
         )
     }
 
