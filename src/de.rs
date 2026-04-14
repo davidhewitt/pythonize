@@ -187,7 +187,7 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
         V: de::Visitor<'de>,
     {
         let s = self.input.cast::<PyString>()?.to_cow()?;
-        if s.len() != 1 {
+        if s.chars().count() != 1 {
             return Err(PythonizeError::invalid_length_char());
         }
         visitor.visit_char(s.chars().next().unwrap())
@@ -1015,6 +1015,19 @@ mod test {
         let expected_json = json!("a");
         let code = c"'a'";
         test_de(code, &expected, &expected_json);
+    }
+
+    #[test]
+    fn test_char_multibyte_codepoint() {
+        // 'ä' is U+00E4: one Unicode codepoint, two UTF-8 bytes.
+        // Previously, deserialize_char checked s.len() (byte length) != 1,
+        // which incorrectly rejected any non-ASCII char. The fix checks
+        // s.chars().count() (codepoint count) != 1 instead.
+        Python::attach(|py| {
+            let py_str = pyo3::types::PyString::new(py, "ä");
+            let result = depythonize::<char>(py_str.as_any());
+            assert_eq!(result.unwrap(), 'ä');
+        });
     }
 
     #[test]
