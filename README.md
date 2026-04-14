@@ -1,6 +1,6 @@
 # Pythonize
 
-This is an experimental serializer for Rust's serde ecosystem, which can convert Rust objects to Python values and back.
+This is a serializer for Rust's serde ecosystem, which can convert Rust objects to Python values and back.
 
 At the moment the Python structures it produces should be _very_ similar to those which are produced by `serde_json`; i.e. calling Python's `json.loads()` on a value encoded by `serde_json` should produce an identical structure to
 that which is produced directly by `pythonize`.
