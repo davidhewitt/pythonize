@@ -621,7 +621,7 @@ impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_map(self.de.dict_access()?)
+        de::Deserializer::deserialize_map(&mut { self.de }, visitor)
     }
 }
 
@@ -1142,6 +1142,34 @@ point = Point(1, 2, 3)";
                 *err.inner,
                 ErrorImpl::Message(msg) if msg == "unknown field `z`, expected `x` or `y`"
             ));
+        });
+    }
+
+    #[test]
+    fn test_enum_struct_variant_from_dataclass() {
+        let code = c"\
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+
+obj = {'Point': Point(1, 2)}";
+
+        #[derive(Debug, Deserialize, PartialEq)]
+        enum Shape {
+            Point { x: i32, y: i32 },
+        }
+
+        let expected = Shape::Point { x: 1, y: 2 };
+
+        Python::attach(|py| {
+            let locals = PyDict::new(py);
+            py.run(code, None, Some(&locals)).unwrap();
+            let obj = locals.get_item("obj").unwrap().unwrap();
+            let actual: Shape = depythonize(&obj).unwrap();
+            assert_eq!(actual, expected);
         });
     }
 }
