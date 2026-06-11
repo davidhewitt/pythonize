@@ -92,7 +92,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Test (abi3)
-        run: cargo test --verbose --features pyo3/abi3-py37
+        run: cargo test --verbose --features pyo3/abi3-py38
 
       - name: Test (arbitrary_precision)
         run: cargo test --verbose --features arbitrary_precision
