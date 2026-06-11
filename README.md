@@ -56,5 +56,5 @@ Enable support for `serde_json`'s `arbitrary_precision` feature, which allows ha
 
 ```toml
 [dependencies]
-pythonize = { version = "0.28", features = ["arbitrary_precision"] }
+pythonize = { version = "0.29", features = ["arbitrary_precision"] }
 ```
