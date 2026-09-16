@@ -18,6 +18,7 @@ const TOKEN: &str = "$serde_json::private::Number";
 /// - `collections.abc.Sequence` instances (as serde sequences)
 /// - `collections.abc.Mapping` instances (as serde maps)
 /// - dataclasses (as serde maps)
+/// - objects with a `model_dump` method (e.g. Pydantic-style wrappers)
 pub fn depythonize<'a, 'py, T>(obj: &'a Bound<'py, PyAny>) -> Result<T>
 where
     T: Deserialize<'a>,
@@ -71,6 +72,26 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
         } else {
             Ok(None)
         }
+    }
+
+    fn model_dump_access(&self) -> Result<Option<PyMappingAccess<'py>>> {
+        let input = self.input;
+        if !input.hasattr(intern!(input.py(), "model_dump"))? {
+            return Ok(None);
+        }
+        let dumped = input.getattr(intern!(input.py(), "model_dump"))?.call0()?;
+        let mapping = dumped.cast::<PyMapping>().map_err(|_| {
+            let type_name = dumped
+                .get_type()
+                .name()
+                .map(|n| n.to_string())
+                .unwrap_or_else(|_| "unknown".to_string());
+            PythonizeError::msg(format!(
+                "model_dump must return a mapping, got {}",
+                type_name
+            ))
+        })?;
+        Ok(Some(PyMappingAccess::new(&mapping)?))
     }
 
     fn deserialize_any_int<'de, V>(&self, int: &Bound<'_, PyInt>, visitor: V) -> Result<V::Value>
@@ -165,6 +186,8 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
             self.deserialize_tuple(obj.len()?, visitor)
         } else if obj.cast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
+        } else if let Some(md_access) = self.model_dump_access()? {
+            visitor.visit_map(md_access)
         } else if let Some(dc) = DataclassCandidate::try_new(obj) {
             visitor.visit_map(PyDataclassAccess::new(dc)?)
         } else {
@@ -315,6 +338,8 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     {
         if let Some(dc_access) = self.dataclass_access()? {
             visitor.visit_map(dc_access)
+        } else if let Some(md_access) = self.model_dump_access()? {
+            visitor.visit_map(md_access)
         } else {
             visitor.visit_map(self.dict_access()?)
         }
@@ -1142,6 +1167,58 @@ point = Point(1, 2, 3)";
                 *err.inner,
                 ErrorImpl::Message(msg) if msg == "unknown field `z`, expected `x` or `y`"
             ));
+        });
+    }
+
+    #[test]
+    fn test_model_dump() {
+        let code = c"\
+class Point:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+    def model_dump(self):
+        return {'x': self.x, 'y': self.y}
+
+point = Point(1, 2)";
+
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+
+        let expected = Point { x: 1, y: 2 };
+        let expected_json = json!({"x": 1, "y": 2});
+
+        Python::attach(|py| {
+            let locals = PyDict::new(py);
+            py.run(code, None, Some(&locals)).unwrap();
+            let obj = locals.get_item("point").unwrap().unwrap();
+            test_de_with_obj(&obj, &expected, &expected_json);
+
+            let map: HashMap<String, i32> = depythonize(&obj).unwrap();
+            assert_eq!(map.len(), 2);
+            assert_eq!(*map.get("x").unwrap(), 1);
+            assert_eq!(*map.get("y").unwrap(), 2);
+        });
+    }
+
+    #[test]
+    fn test_model_dump_non_mapping_error() {
+        let code = c"\
+class Bad:
+    def model_dump(self):
+        return 'not a dict'
+
+bad = Bad()";
+
+        Python::attach(|py| {
+            let locals = PyDict::new(py);
+            py.run(code, None, Some(&locals)).unwrap();
+            let obj = locals.get_item("bad").unwrap().unwrap();
+            let result = depythonize::<JsonValue>(&obj);
+            assert!(result.is_err());
         });
     }
 }
