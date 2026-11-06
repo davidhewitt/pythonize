@@ -69,7 +69,7 @@ jobs:
     strategy:
       fail-fast: false # If one platform fails, allow the rest to keep testing.
       matrix:
-        python-version: ["3.8", "3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.14t", "3.15-dev", "3.15t-dev"]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14", "3.14t", "3.15", "3.15t"]
         os: ["macos-latest", "ubuntu-latest", "windows-latest"]
         rust: [stable]
         include:
@@ -85,17 +85,11 @@ jobs:
           - python-version: "3.14"
             os: "windows-11-arm"
             rust: "stable"
-          # 3.8 & 3.9 don't have 26.04 builds
-          - python-version: "3.8"
-            os: "ubuntu-24.04"
-            rust: "stable"
+          # 3.9 doesn't have 26.04 builds
           - python-version: "3.9"
             os: "ubuntu-24.04"
             rust: "stable"
         exclude:
-          - python-version: "3.8"
-            os: "ubuntu-latest"
-            rust: "stable"
           - python-version: "3.9"
             os: "ubuntu-latest"
             rust: "stable"
@@ -128,7 +122,7 @@ jobs:
         run: cargo test --verbose
 
       - name: Test (abi3)
-        run: cargo test --verbose --features pyo3/abi3-py38
+        run: cargo test --verbose --features pyo3/abi3-py39
 
       - name: Test (arbitrary_precision)
         run: cargo test --verbose --features arbitrary_precision
