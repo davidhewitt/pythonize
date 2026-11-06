@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           # The tag to build or the tag received by the tag event
           ref: ${{ github.event.inputs.version || github.ref }}
