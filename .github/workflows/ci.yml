@@ -85,6 +85,20 @@ jobs:
           - python-version: "3.14"
             os: "windows-11-arm"
             rust: "stable"
+          # 3.8 & 3.9 don't have 26.04 builds
+          - python-version: "3.8"
+            os: "ubuntu-24.04"
+            rust: "stable"
+          - python-version: "3.9"
+            os: "ubuntu-24.04"
+            rust: "stable"
+        exclude:
+          - python-version: "3.8"
+            os: "ubuntu-latest"
+            rust: "stable"
+          - python-version: "3.9"
+            os: "ubuntu-latest"
+            rust: "stable"
 
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
