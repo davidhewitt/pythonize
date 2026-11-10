@@ -7,7 +7,7 @@ use pyo3::types::{
     PyTupleMethods,
 };
 use pyo3::{Bound, IntoPyObject, IntoPyObjectExt, PyAny, PyResult, Python};
-use serde::{ser, Serialize};
+use serde::{Serialize, ser};
 
 use crate::error::{PythonizeError, Result};
 
@@ -945,10 +945,12 @@ mod test {
         test_ser(b"foo", "[102,111,111]");
 
         Python::attach(|py| {
-            assert!(pythonize(py, serde_bytes::Bytes::new(b"foo"))
-                .expect("bytes will always serialize successfully")
-                .eq(&PyBytes::new(py, b"foo"))
-                .expect("bytes will always compare successfully"));
+            assert!(
+                pythonize(py, serde_bytes::Bytes::new(b"foo"))
+                    .expect("bytes will always serialize successfully")
+                    .eq(&PyBytes::new(py, b"foo"))
+                    .expect("bytes will always compare successfully")
+            );
         });
     }
 }

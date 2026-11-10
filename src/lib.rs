@@ -4,9 +4,9 @@ mod de;
 mod error;
 mod ser;
 
-pub use crate::de::{depythonize, Depythonizer};
+pub use crate::de::{Depythonizer, depythonize};
 pub use crate::error::{PythonizeError, Result};
 pub use crate::ser::{
-    pythonize, pythonize_custom, PythonizeDefault, PythonizeListType, PythonizeMappingType,
-    PythonizeNamedMappingType, PythonizeTypes, PythonizeUnnamedMappingAdapter, Pythonizer,
+    PythonizeDefault, PythonizeListType, PythonizeMappingType, PythonizeNamedMappingType,
+    PythonizeTypes, PythonizeUnnamedMappingAdapter, Pythonizer, pythonize, pythonize_custom,
 };

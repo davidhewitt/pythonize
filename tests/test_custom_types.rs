@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
 use pyo3::{
+    IntoPyObjectExt,
     exceptions::{PyIndexError, PyKeyError},
     prelude::*,
     types::{PyDict, PyMapping, PySequence, PyTuple},
-    IntoPyObjectExt,
 };
 use pythonize::{
-    depythonize, pythonize_custom, PythonizeListType, PythonizeMappingType,
-    PythonizeNamedMappingType, PythonizeTypes, PythonizeUnnamedMappingAdapter, Pythonizer,
+    PythonizeListType, PythonizeMappingType, PythonizeNamedMappingType, PythonizeTypes,
+    PythonizeUnnamedMappingAdapter, Pythonizer, depythonize, pythonize_custom,
 };
 use serde::Serialize;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[pyclass(sequence)]
 struct CustomList {
@@ -169,15 +169,19 @@ fn test_pythonizer_can_be_created() {
     // https://github.com/davidhewitt/pythonize/pull/56
     Python::attach(|py| {
         let sample = json!({ "hello": 1, "world": 2 });
-        assert!(sample
-            .serialize(Pythonizer::new(py))
-            .unwrap()
-            .is_instance_of::<PyDict>());
+        assert!(
+            sample
+                .serialize(Pythonizer::new(py))
+                .unwrap()
+                .is_instance_of::<PyDict>()
+        );
 
-        assert!(sample
-            .serialize(Pythonizer::custom::<PythonizeCustomDict>(py))
-            .unwrap()
-            .is_instance_of::<CustomDict>());
+        assert!(
+            sample
+                .serialize(Pythonizer::custom::<PythonizeCustomDict>(py))
+                .unwrap()
+                .is_instance_of::<CustomDict>()
+        );
     })
 }
 
