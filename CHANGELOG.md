@@ -1,3 +1,9 @@
+## Unreleased
+
+- Bump MSRV to 1.85.
+- Update `pyo3` to 0.30.
+- Drop support for Python 3.8 (following PyO3).
+
 ## 0.29.0 - 2026-05-12
 
 - Update `pyo3` to 0.29.
