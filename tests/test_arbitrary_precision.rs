@@ -62,10 +62,12 @@ fn test_serde_error_if_token_empty() {
     let result: Result<Value, _> = serde_json::from_str(json_str);
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("EOF while parsing a value"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("EOF while parsing a value")
+    );
 }
 
 #[test]
@@ -74,10 +76,12 @@ fn test_serde_error_if_token_invalid() {
     let result: Result<Value, _> = serde_json::from_str(json_str);
 
     assert!(result.is_err());
-    assert!(result
-        .unwrap_err()
-        .to_string()
-        .contains("invalid type: integer `2`, expected string containing a number"));
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("invalid type: integer `2`, expected string containing a number")
+    );
 }
 
 #[test]

@@ -1,5 +1,5 @@
 use pyo3::PyErr;
-use pyo3::{exceptions::*, CastError, CastIntoError};
+use pyo3::{CastError, CastIntoError, exceptions::*};
 use serde::{de, ser};
 use std::convert::Infallible;
 use std::error;

@@ -1,7 +1,7 @@
 use pyo3::exceptions::PyKeyError;
-use pyo3::{intern, types::*, Bound};
-use serde::de::{self, IntoDeserializer};
+use pyo3::{Bound, intern, types::*};
 use serde::Deserialize;
+use serde::de::{self, IntoDeserializer};
 
 use crate::error::{ErrorImpl, PythonizeError, Result};
 
@@ -53,10 +53,9 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
             Ok(set) => Ok(PySetAsSequence::from_set(set)),
             Err(e) => {
                 if let Ok(f) = self.input.cast::<PyFrozenSet>() {
-                    Ok(PySetAsSequence::from_frozenset(f))
-                } else {
-                    Err(e.into())
+                    return Ok(PySetAsSequence::from_frozenset(f));
                 }
+                Err(e.into())
             }
         }
     }
@@ -66,11 +65,10 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
     }
 
     fn dataclass_access(&self) -> Result<Option<PyDataclassAccess<'py>>> {
-        if let Some(dc) = DataclassCandidate::try_new(self.input) {
-            Some(PyDataclassAccess::new(dc)).transpose()
-        } else {
-            Ok(None)
-        }
+        let Some(dc) = DataclassCandidate::try_new(self.input) else {
+            return Ok(None);
+        };
+        PyDataclassAccess::new(dc).map(Some)
     }
 
     fn deserialize_any_int<'de, V>(&self, int: &Bound<'_, PyInt>, visitor: V) -> Result<V::Value>
@@ -314,10 +312,10 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
         V: de::Visitor<'de>,
     {
         if let Some(dc_access) = self.dataclass_access()? {
-            visitor.visit_map(dc_access)
-        } else {
-            visitor.visit_map(self.dict_access()?)
+            return visitor.visit_map(dc_access);
         }
+
+        visitor.visit_map(self.dict_access()?)
     }
 
     fn deserialize_struct<V>(
@@ -661,7 +659,7 @@ mod test {
     use crate::error::ErrorImpl;
     use maplit::hashmap;
     use pyo3::{IntoPyObject, Python};
-    use serde_json::{json, Value as JsonValue};
+    use serde_json::{Value as JsonValue, json};
 
     fn test_de<T>(code: &CStr, expected: &T, expected_json: &JsonValue)
     where
