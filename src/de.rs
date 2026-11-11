@@ -51,10 +51,12 @@ impl<'a, 'py> Depythonizer<'a, 'py> {
     fn set_access(&self) -> Result<PySetAsSequence<'py>> {
         match self.input.cast::<PySet>() {
             Ok(set) => Ok(PySetAsSequence::from_set(set)),
-            Err(_) if let Ok(f) = self.input.cast::<PyFrozenSet>() => {
-                Ok(PySetAsSequence::from_frozenset(f))
+            Err(e) => {
+                if let Ok(f) = self.input.cast::<PyFrozenSet>() {
+                    return Ok(PySetAsSequence::from_frozenset(f));
+                }
+                Err(e.into())
             }
-            Err(e) => Err(e.into()),
         }
     }
 
