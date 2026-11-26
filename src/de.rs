@@ -1,4 +1,5 @@
 use pyo3::exceptions::PyKeyError;
+use pyo3::types::list::BoundListIterator;
 use pyo3::{Bound, intern, types::*};
 use serde::Deserialize;
 use serde::de::{self, IntoDeserializer};
@@ -443,24 +444,15 @@ impl<'de> de::SeqAccess<'de> for PySetAsSequence<'_> {
 }
 
 struct PyMappingAccess<'py> {
-    keys: Bound<'py, PyList>,
-    values: Bound<'py, PyList>,
-    key_idx: usize,
-    val_idx: usize,
-    len: usize,
+    items: BoundListIterator<'py>,
+    current_value: Option<Bound<'py, PyAny>>,
 }
 
 impl<'py> PyMappingAccess<'py> {
     fn new(map: &Bound<'py, PyMapping>) -> Result<Self> {
-        let keys = map.keys()?;
-        let values = map.values()?;
-        let len = map.len()?;
         Ok(Self {
-            keys,
-            values,
-            key_idx: 0,
-            val_idx: 0,
-            len,
+            items: map.items()?.into_iter(),
+            current_value: None,
         })
     }
 }
@@ -472,23 +464,26 @@ impl<'de> de::MapAccess<'de> for PyMappingAccess<'_> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        if self.key_idx < self.len {
-            let item = self.keys.get_item(self.key_idx)?;
-            self.key_idx += 1;
-            seed.deserialize(&mut Depythonizer::from_object(&item))
-                .map(Some)
-        } else {
-            Ok(None)
-        }
+        let Some(item) = self.items.next() else {
+            return Ok(None);
+        };
+
+        let (key, value): (Bound<'_, PyAny>, Bound<'_, PyAny>) = item.extract()?;
+
+        let key = seed.deserialize(&mut Depythonizer::from_object(&key))?;
+
+        self.current_value = Some(value);
+
+        Ok(Some(key))
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
     where
         V: de::DeserializeSeed<'de>,
     {
-        let item = self.values.get_item(self.val_idx)?;
-        self.val_idx += 1;
-        seed.deserialize(&mut Depythonizer::from_object(&item))
+        let value = self.current_value.take().unwrap();
+
+        seed.deserialize(&mut Depythonizer::from_object(&value))
     }
 }
 
