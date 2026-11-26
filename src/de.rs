@@ -495,41 +495,37 @@ impl<'de> de::MapAccess<'de> for PyMappingAccess<'_> {
 /// Intermediate structure used to denote that `obj` is a dataclass with `fields`.
 struct DataclassCandidate<'a, 'py> {
     obj: &'a Bound<'py, PyAny>,
-    fields: Bound<'py, PyAny>,
 }
 
 impl<'a, 'py> DataclassCandidate<'a, 'py> {
     fn try_new(obj: &'a Bound<'py, PyAny>) -> Option<Self> {
-        let fields = obj
-            .getattr_opt(intern!(obj.py(), "__dataclass_fields__"))
+        obj.getattr_opt(intern!(obj.py(), "__dataclass_fields__"))
             .ok()
             .flatten()?;
-        Some(Self { obj, fields })
+
+        Some(Self { obj })
     }
 }
 
 struct PyDataclassAccess<'py> {
-    fields: Bound<'py, PyList>,
-    dict: Bound<'py, PyDict>,
-    field_idx: usize,
-    val_idx: usize,
-    len: usize,
+    obj: Bound<'py, PyAny>,
+    fields: Bound<'py, PyIterator>,
+    current_name: Option<Bound<'py, PyString>>,
 }
 
 impl<'py> PyDataclassAccess<'py> {
     fn new(dc: DataclassCandidate<'_, 'py>) -> Result<Self> {
-        let fields = dc.fields.cast::<PyDict>()?.keys();
-        let dict = dc
+        let fields = dc
             .obj
-            .getattr(intern!(dc.obj.py(), "__dict__"))?
-            .cast_into()?;
-        let len = fields.len();
+            .py()
+            .import("dataclasses")?
+            .call_method1("fields", (dc.obj,))?
+            .try_iter()?;
+
         Ok(Self {
+            obj: dc.obj.clone(),
             fields,
-            dict,
-            field_idx: 0,
-            val_idx: 0,
-            len,
+            current_name: None,
         })
     }
 }
@@ -541,26 +537,28 @@ impl<'de> de::MapAccess<'de> for PyDataclassAccess<'_> {
     where
         K: de::DeserializeSeed<'de>,
     {
-        if self.field_idx < self.len {
-            let item = self.fields.get_item(self.field_idx)?;
-            self.field_idx += 1;
-            seed.deserialize(&mut Depythonizer::from_object(&item))
-                .map(Some)
-        } else {
-            Ok(None)
-        }
+        let Some(field) = self.fields.next().transpose()? else {
+            return Ok(None);
+        };
+
+        let name = field
+            .getattr(intern!(self.obj.py(), "name"))?
+            .cast_into::<PyString>()?;
+
+        let key = seed.deserialize(&mut Depythonizer::from_object(name.as_any()))?;
+
+        self.current_name = Some(name);
+
+        Ok(Some(key))
     }
 
     fn next_value_seed<V>(&mut self, seed: V) -> Result<V::Value>
     where
         V: de::DeserializeSeed<'de>,
     {
-        let key = self.fields.get_item(self.val_idx)?;
-        let value = self
-            .dict
-            .get_item(&key)?
-            .ok_or_else(|| PyKeyError::new_err(key.unbind()))?;
-        self.val_idx += 1;
+        let name = self.current_name.take().unwrap();
+        let value = self.obj.getattr(&name)?;
+
         seed.deserialize(&mut Depythonizer::from_object(&value))
     }
 }
@@ -1140,6 +1138,40 @@ point = Point(1, 2, 3)";
                 *err.inner,
                 ErrorImpl::Message(msg) if msg == "unknown field `z`, expected `x` or `y`"
             ));
+        });
+    }
+
+    #[test]
+    fn test_dataclass_slots() {
+        let code = c"\
+from dataclasses import dataclass
+
+@dataclass(slots=True)
+class Point:
+    x: int
+    y: int
+
+point = Point(1, 2)";
+
+        #[derive(Debug, Deserialize, PartialEq)]
+        struct Point {
+            x: i32,
+            y: i32,
+        }
+
+        let expected = Point { x: 1, y: 2 };
+        let expected_json = json!({"x": 1, "y": 2});
+
+        Python::attach(|py| {
+            let locals = PyDict::new(py);
+            py.run(code, None, Some(&locals)).unwrap();
+            let obj = locals.get_item("point").unwrap().unwrap();
+            test_de_with_obj(&obj, &expected, &expected_json);
+
+            let map: HashMap<String, i32> = depythonize(&obj).unwrap();
+            assert_eq!(map.len(), 2);
+            assert_eq!(*map.get("x").unwrap(), 1);
+            assert_eq!(*map.get("y").unwrap(), 2);
         });
     }
 }
