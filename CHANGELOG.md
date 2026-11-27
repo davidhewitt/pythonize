@@ -1,3 +1,7 @@
+## Unreleased
+
+- Fix deserializing `bytearray` to bytes-like Rust types.
+
 ## 0.30.0 - 2026-11-10
 
 - Bump MSRV to 1.85 (following PyO3).
