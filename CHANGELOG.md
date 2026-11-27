@@ -1,3 +1,7 @@
+## Unreleased
+
+- Reject sequences and mappings that the visitor did not fully consume.
+
 ## 0.30.0 - 2026-11-10
 
 - Bump MSRV to 1.85 (following PyO3).
