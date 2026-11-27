@@ -223,8 +223,12 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        let b = self.input.cast::<PyBytes>()?;
-        visitor.visit_bytes(b.as_bytes())
+        if let Ok(b) = self.input.cast::<PyByteArray>() {
+            visitor.visit_byte_buf(b.to_vec())
+        } else {
+            let b = self.input.cast::<PyBytes>()?;
+            visitor.visit_bytes(b.as_bytes())
+        }
     }
 
     fn deserialize_byte_buf<V>(self, visitor: V) -> Result<V::Value>
@@ -1002,7 +1006,16 @@ mod test {
     fn test_deserialize_bytes() {
         Python::attach(|py| {
             let obj = PyBytes::new(py, "hello".as_bytes());
-            let actual: Vec<u8> = depythonize(&obj).unwrap();
+            let actual: serde_bytes::ByteBuf = depythonize(&obj).unwrap();
+            assert_eq!(actual, b"hello");
+        })
+    }
+
+    #[test]
+    fn test_deserialize_bytearray() {
+        Python::attach(|py| {
+            let obj = PyByteArray::new(py, "hello".as_bytes());
+            let actual: serde_bytes::ByteBuf = depythonize(&obj).unwrap();
             assert_eq!(actual, b"hello");
         })
     }
