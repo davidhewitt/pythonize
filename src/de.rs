@@ -164,7 +164,10 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
         } else if obj.cast::<PyMapping>().is_ok() {
             self.deserialize_map(visitor)
         } else if let Some(dc) = DataclassCandidate::try_new(obj) {
-            visitor.visit_map(PyDataclassAccess::new(dc)?)
+            let mut map = PyDataclassAccess::new(dc)?;
+            let value = visitor.visit_map(&mut map)?;
+            map.end()?;
+            Ok(value)
         } else {
             Err(obj.get_type().qualname().map_or_else(
                 |_| PythonizeError::unsupported_type("unknown"),
@@ -275,12 +278,18 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
         V: de::Visitor<'de>,
     {
         match self.sequence_access(None) {
-            Ok(seq) => visitor.visit_seq(seq),
+            Ok(mut seq) => {
+                let value = visitor.visit_seq(&mut seq)?;
+                seq.end()?;
+                Ok(value)
+            }
             Err(e) => {
                 // we allow sets to be deserialized as sequences, so try that
                 if matches!(*e.inner, ErrorImpl::UnexpectedType(_)) {
-                    if let Ok(set) = self.set_access() {
-                        return visitor.visit_seq(set);
+                    if let Ok(mut set) = self.set_access() {
+                        let value = visitor.visit_seq(&mut set)?;
+                        set.end()?;
+                        return Ok(value);
                     }
                 }
                 Err(e)
@@ -292,7 +301,10 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.sequence_access(Some(len))?)
+        let mut seq = self.sequence_access(Some(len))?;
+        let value = visitor.visit_seq(&mut seq)?;
+        seq.end()?;
+        Ok(value)
     }
 
     fn deserialize_tuple_struct<V>(
@@ -304,18 +316,26 @@ impl<'de> de::Deserializer<'de> for &'_ mut Depythonizer<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.sequence_access(Some(len))?)
+        let mut seq = self.sequence_access(Some(len))?;
+        let value = visitor.visit_seq(&mut seq)?;
+        seq.end()?;
+        Ok(value)
     }
 
     fn deserialize_map<V>(self, visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        if let Some(dc_access) = self.dataclass_access()? {
-            return visitor.visit_map(dc_access);
+        if let Some(mut map) = self.dataclass_access()? {
+            let value = visitor.visit_map(&mut map)?;
+            map.end()?;
+            return Ok(value);
         }
 
-        visitor.visit_map(self.dict_access()?)
+        let mut map = self.dict_access()?;
+        let value = visitor.visit_map(&mut map)?;
+        map.end()?;
+        Ok(value)
     }
 
     fn deserialize_struct<V>(
@@ -388,6 +408,15 @@ impl<'a, 'py> PySequenceAccess<'a, 'py> {
     fn new(seq: &'a Bound<'py, PySequence>, len: usize) -> Self {
         Self { seq, index: 0, len }
     }
+
+    /// Rejects elements the visitor did not consume, like `serde_json` does.
+    fn end(&mut self) -> Result<()> {
+        if self.index >= self.len {
+            Ok(())
+        } else {
+            Err(PythonizeError::msg("trailing elements in sequence"))
+        }
+    }
 }
 
 impl<'de> de::SeqAccess<'de> for PySequenceAccess<'_, '_> {
@@ -422,6 +451,15 @@ impl<'py> PySetAsSequence<'py> {
     fn from_frozenset(set: &Bound<'py, PyFrozenSet>) -> Self {
         Self {
             iter: PyIterator::from_object(set).expect("frozenset is always iterable"),
+        }
+    }
+
+    /// Rejects elements the visitor did not consume, like `serde_json` does.
+    fn end(&mut self) -> Result<()> {
+        if self.iter.next().is_none() {
+            Ok(())
+        } else {
+            Err(PythonizeError::msg("trailing elements in sequence"))
         }
     }
 }
@@ -462,6 +500,15 @@ impl<'py> PyMappingAccess<'py> {
             val_idx: 0,
             len,
         })
+    }
+
+    /// Rejects elements the visitor did not consume, like `serde_json` does.
+    fn end(&mut self) -> Result<()> {
+        if self.key_idx >= self.len {
+            Ok(())
+        } else {
+            Err(PythonizeError::msg("trailing entries in map"))
+        }
     }
 }
 
@@ -531,6 +578,15 @@ impl<'py> PyDataclassAccess<'py> {
             val_idx: 0,
             len,
         })
+    }
+
+    /// Rejects elements the visitor did not consume, like `serde_json` does.
+    fn end(&mut self) -> Result<()> {
+        if self.field_idx >= self.len {
+            Ok(())
+        } else {
+            Err(PythonizeError::msg("trailing entries in map"))
+        }
     }
 }
 
@@ -612,14 +668,20 @@ impl<'de> de::VariantAccess<'de> for PyEnumAccess<'_, '_> {
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_seq(self.de.sequence_access(Some(len))?)
+        let mut seq = self.de.sequence_access(Some(len))?;
+        let value = visitor.visit_seq(&mut seq)?;
+        seq.end()?;
+        Ok(value)
     }
 
     fn struct_variant<V>(self, _fields: &'static [&'static str], visitor: V) -> Result<V::Value>
     where
         V: de::Visitor<'de>,
     {
-        visitor.visit_map(self.de.dict_access()?)
+        let mut map = self.de.dict_access()?;
+        let value = visitor.visit_map(&mut map)?;
+        map.end()?;
+        Ok(value)
     }
 }
 
@@ -1140,6 +1202,73 @@ point = Point(1, 2, 3)";
                 *err.inner,
                 ErrorImpl::Message(msg) if msg == "unknown field `z`, expected `x` or `y`"
             ));
+        });
+    }
+
+    #[test]
+    fn test_unconsumed_input_is_rejected() {
+        /// Reads only the first element/entry, then stops.
+        struct TakeFirst;
+
+        impl<'de> Deserialize<'de> for TakeFirst {
+            fn deserialize<D: de::Deserializer<'de>>(d: D) -> std::result::Result<Self, D::Error> {
+                d.deserialize_any(TakeFirst)
+            }
+        }
+
+        impl<'de> de::Visitor<'de> for TakeFirst {
+            type Value = TakeFirst;
+
+            fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str("a sequence or map")
+            }
+
+            fn visit_seq<A: de::SeqAccess<'de>>(
+                self,
+                mut seq: A,
+            ) -> std::result::Result<Self, A::Error> {
+                seq.next_element::<de::IgnoredAny>()?;
+                Ok(TakeFirst)
+            }
+
+            fn visit_map<A: de::MapAccess<'de>>(
+                self,
+                mut map: A,
+            ) -> std::result::Result<Self, A::Error> {
+                map.next_entry::<de::IgnoredAny, de::IgnoredAny>()?;
+                Ok(TakeFirst)
+            }
+        }
+
+        let code = c"\
+from dataclasses import dataclass
+
+@dataclass
+class Point:
+    x: int
+    y: int
+";
+
+        Python::attach(|py| {
+            let locals = PyDict::new(py);
+            py.run(code, None, Some(&locals)).unwrap();
+            let cases = [
+                (c"[1]", None),
+                (c"{'a': 1}", None),
+                (c"[1, 2]", Some("trailing elements in sequence")),
+                (c"{1, 2}", Some("trailing elements in sequence")),
+                (c"{'a': 1, 'b': 2}", Some("trailing entries in map")),
+                (c"Point(1, 2)", Some("trailing entries in map")),
+            ];
+            for (code, expected_err) in cases {
+                let obj = py.eval(code, None, Some(&locals)).unwrap();
+                let result = depythonize::<TakeFirst>(&obj);
+                assert_eq!(
+                    result.err().map(|e| e.to_string()).as_deref(),
+                    expected_err,
+                    "{code:?}"
+                );
+            }
         });
     }
 }
